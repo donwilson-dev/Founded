@@ -2,16 +2,17 @@ import React from 'react';
 import {
   CalendarCheck,
   CircleDollarSign,
+  CreditCard,
   Edit3,
   Landmark,
   Plus,
+  ReceiptText,
   Save,
   Trash2,
   TrendingDown,
-  WalletCards,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
   toAccountBalancePayload,
@@ -30,6 +31,10 @@ import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpe
 
 const initialIncome = {
   label: '',
+  accountBalanceId: '',
+  isAccountTransfer: false,
+  fromAccountId: '',
+  toAccountId: '',
   amount: '',
   startDate: '',
   endDate: '',
@@ -40,6 +45,8 @@ const initialIncome = {
 
 const initialAccountBalance = {
   name: '',
+  owner: '',
+  accountType: '',
   amount: '',
   date: '',
   notes: '',
@@ -48,6 +55,7 @@ const initialAccountBalance = {
 
 const initialDebt = {
   name: '',
+  accountBalanceId: '',
   debtType: 'credit_card',
   startingBalance: '',
   currentBalance: '',
@@ -90,6 +98,17 @@ function isOneTimeIncome(form) {
   return form.frequency === 'one_time';
 }
 
+function accountDisplayName(account) {
+  if (!account) return '-';
+  const bank = account.name || 'Account';
+  const accountType = String(account.account_type || account.accountType || '').trim();
+  const owner = String(account.owner || '').trim();
+  if (accountType && owner) return `${bank} - ${accountType} (${owner})`;
+  if (accountType) return `${bank} - ${accountType}`;
+  if (owner) return `${bank} (${owner})`;
+  return bank;
+}
+
 export default function BaselineBuilder({ isActive = false }) {
   const [accountBalances, setAccountBalances] = useSessionState('founded.baseline.accountBalances', []);
   const [incomeSources, setIncomeSources] = useSessionState('founded.baseline.incomeSources', []);
@@ -112,6 +131,9 @@ export default function BaselineBuilder({ isActive = false }) {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingDeleteProjectionId, setPendingDeleteProjectionId] = useState(null);
+  const accountBalanceFormRef = useRef(null);
+  const incomeFormRef = useRef(null);
+  const debtFormRef = useRef(null);
 
   async function refresh({ includeInputs = true } = {}) {
     try {
@@ -204,6 +226,16 @@ export default function BaselineBuilder({ isActive = false }) {
 
   const editingDebt = debts.find((debt) => debt.id === editingDebtId);
   const selectedSavedProjection = savedProjections.find((item) => String(item.id) === String(selectedSavedProjectionId));
+  const activeAccountBalances = useMemo(() => accountBalances.filter((item) => item.active !== false), [accountBalances]);
+
+  function focusOpenedForm(ref) {
+    window.setTimeout(() => {
+      const form = ref.current;
+      if (!form) return;
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      form.querySelector('input, select, textarea')?.focus({ preventScroll: true });
+    }, 0);
+  }
 
   function markWorkingBaselineChanged() {
     setSelectedSavedProjectionId('');
@@ -214,12 +246,15 @@ export default function BaselineBuilder({ isActive = false }) {
     setEditingAccountBalanceId(null);
     setAccountBalanceForm({ ...initialAccountBalance, date: todayDate() });
     setShowAccountBalanceForm(true);
+    focusOpenedForm(accountBalanceFormRef);
   }
 
   function startEditAccountBalance(balance) {
     setEditingAccountBalanceId(balance.id);
     setAccountBalanceForm({
       name: balance.name || '',
+      owner: balance.owner || '',
+      accountType: balance.account_type || balance.accountType || '',
       amount: balance.amount ?? '',
       date: balance.date || todayDate(),
       notes: balance.notes || '',
@@ -238,12 +273,17 @@ export default function BaselineBuilder({ isActive = false }) {
     setEditingIncomeId(null);
     setIncomeForm({ ...initialIncome, startDate: todayDate() });
     setShowIncomeForm(true);
+    focusOpenedForm(incomeFormRef);
   }
 
   function startEditIncome(source) {
     setEditingIncomeId(source.id);
     setIncomeForm({
       label: source.label || '',
+      accountBalanceId: source.account_balance_id ?? source.accountBalanceId ?? '',
+      isAccountTransfer: Boolean(source.is_account_transfer ?? source.isAccountTransfer),
+      fromAccountId: source.from_account_id ?? source.fromAccountId ?? '',
+      toAccountId: source.to_account_id ?? source.toAccountId ?? '',
       amount: source.amount ?? '',
       startDate: source.start_date || todayDate(),
       endDate: source.end_date || '',
@@ -264,6 +304,7 @@ export default function BaselineBuilder({ isActive = false }) {
     setEditingDebtId(null);
     setDebtForm({ ...initialDebt, startDate: defaultDebtStartDate() });
     setShowDebtForm(true);
+    focusOpenedForm(debtFormRef);
   }
 
 function startEditDebt(debt) {
@@ -271,6 +312,7 @@ function startEditDebt(debt) {
     setEditingDebtId(debt.id);
     setDebtForm({
       name: debt.name || '',
+      accountBalanceId: debt.account_balance_id ?? debt.accountBalanceId ?? '',
       debtType: debt.debt_type || 'credit_card',
       startingBalance: debt.current_balance ?? '',
       currentBalance: debt.current_balance ?? '',
@@ -665,11 +707,13 @@ function startEditDebt(debt) {
         </div>
         <div className="subsection-title">Account Balances</div>
         <CrudTable
-          columns={['Name', 'Date', 'Amount', 'Status', 'Actions']}
+          columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Status', 'Actions']}
           rows={accountBalances.map((item) => ({
             id: item.id,
             cells: [
               item.name,
+              item.account_type || '-',
+              item.owner || '-',
               shortMonth(item.date),
               currencyPrecise(item.amount),
               item.active ? 'Active' : 'Inactive',
@@ -680,17 +724,19 @@ function startEditDebt(debt) {
           empty={<EmptyState compact title="No account balance yet" body="Add a starting cash position to carry into projections." />}
         />
         {showAccountBalanceForm && (
-          <form className="inline-form" onSubmit={submitAccountBalance}>
+          <form className="inline-form account-balance-form" ref={accountBalanceFormRef} onSubmit={submitAccountBalance}>
             <div className="form-heading">
               <strong>{editingAccountBalanceId ? 'Edit Account Balance' : 'Add Account Balance'}</strong>
               <button type="button" className="icon-button" onClick={cancelAccountBalanceForm} aria-label="Cancel account balance form">
                 <X size={16} />
               </button>
             </div>
-            <label>Name<input placeholder="Checking account" value={accountBalanceForm.name} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, name: e.target.value })} required /></label>
+            <label>Bank<input placeholder="Bank Name" value={accountBalanceForm.name} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, name: e.target.value })} required /></label>
+            <label>Account Type<input placeholder="Type of Account" value={accountBalanceForm.accountType} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, accountType: e.target.value })} /></label>
+            <label>Owner<input placeholder="Name" value={accountBalanceForm.owner} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, owner: e.target.value })} /></label>
             <label>Amount<input type="number" min="0" placeholder="0.00" value={accountBalanceForm.amount} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, amount: e.target.value })} required /></label>
             <label>Date<input type="date" value={accountBalanceForm.date} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, date: e.target.value })} required /></label>
-            <label className="wide-field">Notes<input placeholder="Optional notes" value={accountBalanceForm.notes} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, notes: e.target.value })} /></label>
+            <label>Notes<input placeholder="Optional notes" value={accountBalanceForm.notes} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, notes: e.target.value })} /></label>
             <div className="form-actions-row">
               <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingAccountBalanceId ? 'Update Balance' : 'Save Balance'}</button>
               <label className="checkbox-line">
@@ -701,11 +747,12 @@ function startEditDebt(debt) {
         )}
         <div className="subsection-title">Income Sources</div>
         <CrudTable
-          columns={['Name', 'Start Date', 'Amount', 'Frequency', 'Status', 'Actions']}
+          columns={['Name', 'Account', 'Start Date', 'Amount', 'Frequency', 'Status', 'Actions']}
           rows={incomeSources.map((item) => ({
             id: item.id,
             cells: [
               item.label,
+              item.is_account_transfer ? 'Account Transfer' : accountDisplayName(accountBalances.find((account) => Number(account.id) === Number(item.account_balance_id))),
               shortMonth(item.start_date),
               currencyPrecise(item.amount),
               labelize(item.frequency),
@@ -717,31 +764,74 @@ function startEditDebt(debt) {
           empty={<EmptyState compact title="No income sources yet" body="Add income sources to include them in baseline projections." />}
         />
         {showIncomeForm && (
-          <form className="inline-form income-source-form" onSubmit={submitIncome}>
+          <form className="inline-form income-source-form" ref={incomeFormRef} onSubmit={submitIncome}>
             <div className="form-heading">
               <strong>{editingIncomeId ? 'Edit Income Source' : 'Add Income Source'}</strong>
               <button type="button" className="icon-button" onClick={cancelIncomeForm} aria-label="Cancel income form">
                 <X size={16} />
               </button>
             </div>
-            <label>Name<input placeholder="Primary paycheck" value={incomeForm.label} onChange={(e) => setIncomeForm({ ...incomeForm, label: e.target.value })} required /></label>
-            <label>Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
-            <label>Recurring
-              <select value={incomeForm.frequency} onChange={(e) => setIncomeForm({ ...incomeForm, frequency: e.target.value, endDate: e.target.value === 'one_time' ? '' : incomeForm.endDate })}>
-                <option value="one_time">One-Time</option>
-                <option value="monthly">Monthly</option>
-                <option value="weekly">Weekly</option>
-                <option value="bi_weekly">Bi-weekly</option>
-                <option value="first_and_fifteenth">First and Fifteenth</option>
-              </select>
-            </label>
+            <label>Name<input placeholder="Income Source" value={incomeForm.label} onChange={(e) => setIncomeForm({ ...incomeForm, label: e.target.value })} required /></label>
+            {incomeForm.isAccountTransfer ? (
+              <>
+                <label>From Account
+                  <select value={incomeForm.fromAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, fromAccountId: e.target.value })}>
+                    <option value="">Unassigned</option>
+                    {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                  </select>
+                </label>
+                <label>To Account
+                  <select value={incomeForm.toAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, toAccountId: e.target.value })}>
+                    <option value="">Unassigned</option>
+                    {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <>
+                <label>Account
+                  <select value={incomeForm.accountBalanceId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, accountBalanceId: e.target.value })}>
+                    <option value="">Unassigned</option>
+                    {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                  </select>
+                </label>
+                <label>Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
+              </>
+            )}
+            {incomeForm.isAccountTransfer ? (
+              <label>Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
+            ) : (
+              <label>Recurring
+                <select value={incomeForm.frequency} onChange={(e) => setIncomeForm({ ...incomeForm, frequency: e.target.value, endDate: e.target.value === 'one_time' ? '' : incomeForm.endDate })}>
+                  <option value="one_time">One-Time</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="bi_weekly">Bi-weekly</option>
+                  <option value="first_and_fifteenth">First and Fifteenth</option>
+                </select>
+              </label>
+            )}
             <label>{isOneTimeIncome(incomeForm) ? 'Date' : 'Start Date'}<input type="date" value={incomeForm.startDate} onChange={(e) => setIncomeForm({ ...incomeForm, startDate: e.target.value })} required /></label>
             {!isOneTimeIncome(incomeForm) ? (
               <label>End Date<input type="date" value={incomeForm.endDate} onChange={(e) => setIncomeForm({ ...incomeForm, endDate: e.target.value })} /></label>
             ) : null}
-            <label>Notes<input placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
+            {incomeForm.isAccountTransfer ? (
+              <label>Recurring
+                <select value={incomeForm.frequency} onChange={(e) => setIncomeForm({ ...incomeForm, frequency: e.target.value, endDate: e.target.value === 'one_time' ? '' : incomeForm.endDate })}>
+                  <option value="one_time">One-Time</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="bi_weekly">Bi-weekly</option>
+                  <option value="first_and_fifteenth">First and Fifteenth</option>
+                </select>
+              </label>
+            ) : null}
+            <label className={incomeForm.isAccountTransfer ? 'wide-field income-notes-field' : 'full-row-field income-notes-field'}>Notes<textarea placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
             <div className="form-actions-row">
               <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingIncomeId ? 'Update Income' : 'Save Income'}</button>
+              <label className="checkbox-line">
+                <input type="checkbox" checked={incomeForm.isAccountTransfer} onChange={(e) => setIncomeForm({ ...incomeForm, isAccountTransfer: e.target.checked, accountBalanceId: e.target.checked ? '' : incomeForm.accountBalanceId })} /> Account Transfer
+              </label>
               <label className="checkbox-line">
                 <input type="checkbox" checked={incomeForm.active} onChange={(e) => setIncomeForm({ ...incomeForm, active: e.target.checked })} /> Active
               </label>
@@ -775,7 +865,7 @@ function startEditDebt(debt) {
           empty={<EmptyState compact title="No debts yet" body="Add debts and APRs to generate payoff projections." />}
         />
         {showDebtForm && (
-          <form className="inline-form debt-form" onSubmit={submitDebt}>
+          <form className="inline-form debt-form" ref={debtFormRef} onSubmit={submitDebt}>
             <div className="form-heading">
               <strong>{editingDebtId ? 'Edit Debt' : 'Add Debt'}</strong>
               <button type="button" className="icon-button" onClick={cancelDebtForm} aria-label="Cancel debt form">
@@ -784,7 +874,7 @@ function startEditDebt(debt) {
             </div>
             <div className="debt-form-columns">
               <div className="form-column">
-                <label>Debt Name<input placeholder="Chase Freedom" value={debtForm.name} onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} required /></label>
+                <label>Debt Name<input placeholder="Debt" value={debtForm.name} onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} required /></label>
                 <label>Debt Type
                   <select value={debtForm.debtType} onChange={(e) => setDebtForm(normalizeDebtFormForType({ ...debtForm, debtType: e.target.value }))}>
                     {['credit_card', 'personal_loan', 'vehicle_loan', 'student_loan', 'other'].map((type) => <option key={type} value={type}>{labelize(type)}</option>)}
@@ -798,14 +888,25 @@ function startEditDebt(debt) {
               </div>
               {!isOtherDebt(debtForm) ? (
                 <div className="form-column">
-                  <label>APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => setDebtForm({ ...debtForm, aprPercentage: e.target.value })} /></label>
+                  <label>Account
+                    <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
+                  <label>Standard APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => setDebtForm({ ...debtForm, aprPercentage: e.target.value })} /></label>
                   <label>Promo APR %<input type="number" min="0" step="0.01" placeholder="Optional" value={debtForm.promoAprPercentage} onChange={(e) => setDebtForm({ ...debtForm, promoAprPercentage: e.target.value })} /></label>
                   <label>Promo Start Date<input type="date" value={debtForm.promoStartDate} onChange={(e) => setDebtForm({ ...debtForm, promoStartDate: e.target.value })} /></label>
                   <label>Promo End Date<input type="date" value={debtForm.promoEndDate} onChange={(e) => setDebtForm({ ...debtForm, promoEndDate: e.target.value })} /></label>
                 </div>
-              ) : null}
-              <div className="form-column">
-                {isOtherDebt(debtForm) ? (
+              ) : (
+                <div className="form-column">
+                  <label>Account
+                    <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
                   <label>Recurring
                     <select value={debtForm.recurrence || 'monthly'} onChange={(e) => setDebtForm({ ...debtForm, recurrence: e.target.value, payoffTargetDate: e.target.value === 'one_time' ? '' : debtForm.payoffTargetDate })}>
                       <option value="one_time">One-Time</option>
@@ -815,19 +916,24 @@ function startEditDebt(debt) {
                       <option value="first_and_fifteenth">First and Fifteenth</option>
                     </select>
                   </label>
-                ) : null}
-                {isOtherDebt(debtForm) ? (
                   <>
                     <label>{isOneTimeOtherDebt(debtForm) ? 'Date' : 'Start Date'}<input type="date" value={debtForm.startDate} onChange={(e) => setDebtForm({ ...debtForm, startDate: e.target.value })} /></label>
                     {!isOneTimeOtherDebt(debtForm) ? (
                       <label>End Date<input type="date" value={debtForm.payoffTargetDate} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value })} /></label>
                     ) : null}
                   </>
-                ) : null}
-                <label>Priority<input type="number" min="1" placeholder="#" value={debtForm.priorityNumber} onChange={(e) => setDebtForm({ ...debtForm, priorityNumber: e.target.value })} /></label>
-                <label>Notes<input placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
-                <EstimatedPaymentFields form={debtForm} />
-              </div>
+                </div>
+              )}
+              {!isOtherDebt(debtForm) ? (
+                <div className="form-column debt-notes-column">
+                  <EstimatedPaymentFields form={debtForm} />
+                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
+                </div>
+              ) : (
+                <div className="form-column other-debt-notes-column">
+                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
+                </div>
+              )}
             </div>
             <div className="form-actions-row">
               <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingDebtId ? 'Update Debt' : 'Save Debt'}</button>
@@ -851,7 +957,8 @@ function startEditDebt(debt) {
       <section className="card summary-stack">
         <h2>{rows[0]?.month ? `Summary - ${shortMonth(rows[0].month)}` : 'Summary'}</h2>
         <SummaryCard icon={CircleDollarSign} label="Total Monthly Income" value={currency(summary.income)} tone="positive" sublabel={rows.length ? null : 'Not projected yet'} />
-        <SummaryCard icon={WalletCards} label="Total Monthly Debt Pay." value={currency(summary.payments)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={CreditCard} label="Total Monthly Debt Pay" value={currency(summary.payments)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={ReceiptText} label="Bills" value={currency(rows[0]?.Bills || 0)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
         <SummaryCard icon={Landmark} label="Total Debt Balance" value={currency(summary.debt)} sublabel={rows.length ? null : 'Not projected yet'} />
         <SummaryCard icon={TrendingDown} label="Monthly Surplus" value={currency(summary.remainingCash)} tone={summary.remainingCash < 0 ? 'danger' : 'positive'} sublabel={rows.length ? null : 'Not projected yet'} />
         <SummaryCard icon={CalendarCheck} label="Projected Payoff Date" value={summary.payoff ? shortMonth(summary.payoff) : 'Not projected'} tone="scenario" />
@@ -937,6 +1044,7 @@ function rowValue(row, label) {
 }
 
 function monthlyIncomeAmount(source) {
+  if (source.is_account_transfer || source.isAccountTransfer) return 0;
   const amount = Number(source.amount || 0);
   return amount;
 }
@@ -956,6 +1064,7 @@ function normalizeDebtFormForType(form) {
     startingBalance: '',
     currentBalance: '',
     recurrence: form.recurrence || 'monthly',
+    priorityNumber: '',
     aprPercentage: '',
     promoAprPercentage: '',
     promoStartDate: '',

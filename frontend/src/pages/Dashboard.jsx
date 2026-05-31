@@ -2,12 +2,13 @@ import React from 'react';
 import {
   CalendarCheck,
   CircleDollarSign,
+  CreditCard,
   Info,
   Landmark,
   ListChecks,
+  ReceiptText,
   Trash2,
   TrendingDown,
-  WalletCards,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -230,8 +231,8 @@ export default function Dashboard({ onNavigate, isActive = false }) {
         <section className="card snapshot-card summary-snapshot">
           <h2>{snapshot.summary.startMonth ? `Summary - ${shortMonth(snapshot.summary.startMonth)}` : 'Summary'}</h2>
           <SnapshotMetric icon={CircleDollarSign} label="Total Monthly Income" value={currency(snapshot.summary.income)} tone="positive" />
-          <SnapshotMetric icon={WalletCards} label="Total Monthly Debt Pay." value={currency(snapshot.summary.payments)} tone="warning" />
-          <SnapshotMetric icon={WalletCards} label="Bills" value={currency(snapshot.summary.bills)} tone="warning" />
+          <SnapshotMetric icon={CreditCard} label="Total Monthly Debt Pay" value={currency(snapshot.summary.payments)} tone="warning" />
+          <SnapshotMetric icon={ReceiptText} label="Bills" value={currency(snapshot.summary.bills)} tone="warning" />
           <SnapshotMetric icon={Landmark} label="Total Debt Balance" value={currency(snapshot.summary.debt)} />
           <SnapshotMetric icon={TrendingDown} label="Monthly Surplus" value={currency(snapshot.summary.remainingCash)} tone={snapshot.summary.remainingCash < 0 ? 'danger' : 'positive'} />
           <SnapshotMetric icon={CalendarCheck} label="Projected Payoff Date" value={formatMonth(snapshot.summary.payoff)} tone="scenario" />

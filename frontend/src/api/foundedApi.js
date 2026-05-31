@@ -124,7 +124,12 @@ export const foundedApi = {
 
 export function toIncomePayload(form, defaults = {}) {
   const frequency = form.frequency || defaults.frequency || 'monthly';
+  const isAccountTransfer = Boolean(form.isAccountTransfer);
   return {
+    account_balance_id: isAccountTransfer ? null : form.accountBalanceId ? Number(form.accountBalanceId) : null,
+    is_account_transfer: isAccountTransfer,
+    from_account_id: isAccountTransfer && form.fromAccountId ? Number(form.fromAccountId) : null,
+    to_account_id: isAccountTransfer && form.toAccountId ? Number(form.toAccountId) : null,
     label: form.label,
     amount: Number(form.amount || 0),
     start_date: form.startDate || defaults.startDate,
@@ -138,6 +143,8 @@ export function toIncomePayload(form, defaults = {}) {
 export function toAccountBalancePayload(form) {
   return {
     name: form.name,
+    owner: form.owner?.trim() || null,
+    account_type: form.accountType?.trim() || null,
     amount: Number(form.amount || 0),
     date: form.date,
     notes: form.notes || null,
@@ -155,6 +162,7 @@ export function toDebtPayload(form, defaults = {}) {
     : Number(form.actualPayment || 0);
   const minimumPayment = isOtherDebt && rawMinimumPayment <= 0 && rawActualPayment > 0 ? rawActualPayment : rawMinimumPayment;
   return {
+    account_balance_id: form.accountBalanceId ? Number(form.accountBalanceId) : null,
     name: form.name,
     debt_type: form.debtType,
     starting_balance: Number(form.startingBalance || currentBalance),
@@ -165,7 +173,7 @@ export function toDebtPayload(form, defaults = {}) {
     payment_due_day: null,
     start_date: form.startDate || defaults.startDate,
     payoff_target_date: isOtherDebt && recurrence === 'one_time' ? null : form.payoffTargetDate || null,
-    priority_number: form.priorityNumber ? Number(form.priorityNumber) : null,
+    priority_number: isOtherDebt ? null : form.priorityNumber ? Number(form.priorityNumber) : null,
     active: Boolean(form.active),
     notes: form.notes || null,
   };

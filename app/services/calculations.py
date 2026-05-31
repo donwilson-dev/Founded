@@ -166,6 +166,8 @@ def is_true_debt(debt: dict[str, Any]) -> bool:
 
 
 def monthly_income_amount(source: dict[str, Any], month: date) -> float:
+    if source.get("is_account_transfer"):
+        return 0.0
     return float(source["amount"]) * occurrence_count_for_month(
         source.get("frequency", "monthly"),
         source["start_date"],

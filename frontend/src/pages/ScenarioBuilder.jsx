@@ -1,6 +1,6 @@
 import React from 'react';
 import { Edit3, GitCompare, Plus, Save, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
   toDebtPayload,
@@ -15,9 +15,22 @@ import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
-const incomeTemplate = { label: '', amount: '', startDate: '', endDate: '', frequency: 'monthly', notes: '', active: true };
+const incomeTemplate = {
+  label: '',
+  accountBalanceId: '',
+  isAccountTransfer: false,
+  fromAccountId: '',
+  toAccountId: '',
+  amount: '',
+  startDate: '',
+  endDate: '',
+  frequency: 'monthly',
+  notes: '',
+  active: true,
+};
 const debtTemplate = {
   name: '',
+  accountBalanceId: '',
   debtType: 'credit_card',
   startingBalance: '',
   currentBalance: '',
@@ -55,10 +68,35 @@ export default function ScenarioBuilder({ isActive = false }) {
   const [editingDebtOverrideIndex, setEditingDebtOverrideIndex] = useState(null);
   const [editingIncomeOverrideIndex, setEditingIncomeOverrideIndex] = useState(null);
   const [debtAprError, setDebtAprError] = useState('');
+  const incomeFormRef = useRef(null);
+  const debtFormRef = useRef(null);
   const normalizedScenarioRows = useMemo(() => normalizeProjectionRows(scenario?.generated_rows || []), [scenario]);
   const selectedSavedScenario = savedScenarios.find((item) => String(item.id) === String(selectedScenarioId));
   const selectedBaseline = saved.find((item) => String(item.id) === String(baselineId));
   const baselineReady = Boolean(baseline && selectedBaseline);
+  const baselineAccounts = useMemo(
+    () => (baseline?.assumptions_snapshot?.account_balances || baseline?.assumptions_snapshot?.baseline_assumptions?.account_balances || []).filter((item) => item.active !== false),
+    [baseline]
+  );
+
+  function focusOpenedForm(ref) {
+    window.setTimeout(() => {
+      const form = ref.current;
+      if (!form) return;
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      form.querySelector('input, select, textarea')?.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  function startAddIncomeOverride() {
+    setShowIncomeForm(true);
+    focusOpenedForm(incomeFormRef);
+  }
+
+  function startAddDebtOverride() {
+    setShowDebtForm(true);
+    focusOpenedForm(debtFormRef);
+  }
 
   useEffect(() => {
     foundedApi
@@ -136,7 +174,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   function addIncomeOverride(event) {
     event.preventDefault();
     if (!incomeForm.label.trim() || incomeForm.amount === '') {
-      setStatus('Income Name and Changed Amount are required.');
+      setStatus('Name and Changed Amount are required.');
       return;
     }
     const nextIncome = toIncomePayload(incomeForm, { startDate: baselineStartMonth(baseline), frequency: 'monthly' });
@@ -186,6 +224,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     setDebtForm({
       ...debtTemplate,
       name: item.debt.name || '',
+      accountBalanceId: item.debt.account_balance_id ?? item.debt.accountBalanceId ?? '',
       debtType: item.debt.debt_type || 'credit_card',
       currentBalance: item.debt.current_balance ?? '',
       minimumMonthlyPayment: item.debt.minimum_monthly_payment ?? '',
@@ -221,6 +260,10 @@ export default function ScenarioBuilder({ isActive = false }) {
     setIncomeForm({
       ...incomeTemplate,
       label: item.label || '',
+      accountBalanceId: item.account_balance_id ?? item.accountBalanceId ?? '',
+      isAccountTransfer: Boolean(item.is_account_transfer ?? item.isAccountTransfer),
+      fromAccountId: item.from_account_id ?? item.fromAccountId ?? '',
+      toAccountId: item.to_account_id ?? item.toAccountId ?? '',
       amount: item.amount ?? '',
       startDate: item.start_date || '',
       endDate: item.end_date || '',
@@ -427,12 +470,12 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Income Deviations</h2>
-          <button className="outline-button" onClick={() => setShowIncomeForm(true)} disabled={showIncomeForm}>
+          <button className="outline-button" onClick={startAddIncomeOverride} disabled={showIncomeForm}>
             <Plus size={16} /> Income Deviation
           </button>
         </div>
         <DeviationTable
-          columns={['Income Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Status', 'Actions']}
+          columns={['Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Status', 'Actions']}
           rows={incomeOverrides.map((item, index) => ({
             id: `${item.label}-${index}`,
             cells: [
@@ -449,7 +492,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           emptyText="No income deviations added yet."
         />
         {showIncomeForm ? (
-          <form className="inline-form" onSubmit={addIncomeOverride}>
+          <form className="inline-form" ref={incomeFormRef} onSubmit={addIncomeOverride}>
             <div className="form-heading">
               <strong>{editingIncomeOverrideIndex === null ? 'Add Income Deviation' : 'Edit Income Deviation'}</strong>
               <button type="button" className="icon-button" onClick={() => {
@@ -460,9 +503,35 @@ export default function ScenarioBuilder({ isActive = false }) {
                 <X size={16} />
               </button>
             </div>
-            <div className="deviation-grid income-deviation-grid">
-              <label>Income Name<input placeholder="Income name" value={incomeForm.label} onChange={(e) => setIncomeForm({ ...incomeForm, label: e.target.value })} required /></label>
-              <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
+            <div className={`deviation-grid income-deviation-grid ${incomeForm.isAccountTransfer ? 'transfer-grid' : ''}`}>
+              <label>Name<input placeholder="Income Source" value={incomeForm.label} onChange={(e) => setIncomeForm({ ...incomeForm, label: e.target.value })} required /></label>
+              {incomeForm.isAccountTransfer ? (
+                <>
+                  <label>From Account
+                    <select value={incomeForm.fromAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, fromAccountId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
+                  <label>To Account
+                    <select value={incomeForm.toAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, toAccountId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
+                  <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
+                </>
+              ) : (
+                <>
+                  <label>Account
+                    <select value={incomeForm.accountBalanceId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, accountBalanceId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
+                  <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
+                </>
+              )}
               <label>{isOneTimeIncome(incomeForm) ? 'Date' : 'Start Date'}<input type="date" value={incomeForm.startDate} onChange={(e) => setIncomeForm({ ...incomeForm, startDate: e.target.value })} /></label>
               {!isOneTimeIncome(incomeForm) ? (
                 <label>End Date<input type="date" value={incomeForm.endDate} onChange={(e) => setIncomeForm({ ...incomeForm, endDate: e.target.value })} /></label>
@@ -476,10 +545,13 @@ export default function ScenarioBuilder({ isActive = false }) {
                   <option value="first_and_fifteenth">First and Fifteenth</option>
                 </select>
               </label>
-              <label className="wide-field">Notes<input placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
+              <label className={incomeForm.isAccountTransfer ? 'wide-field income-notes-field' : 'wide-field income-notes-field'}>Notes<textarea placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
             </div>
             <div className="form-actions-row">
               <button className="primary-button">{editingIncomeOverrideIndex === null ? 'Save Income Change' : 'Update Income Change'}</button>
+              <label className="checkbox-line">
+                <input type="checkbox" checked={incomeForm.isAccountTransfer} onChange={(e) => setIncomeForm({ ...incomeForm, isAccountTransfer: e.target.checked, accountBalanceId: e.target.checked ? '' : incomeForm.accountBalanceId })} /> Account Transfer
+              </label>
               <label className="checkbox-line">
                 <input type="checkbox" checked={incomeForm.active} onChange={(e) => setIncomeForm({ ...incomeForm, active: e.target.checked })} /> Active
               </label>
@@ -491,7 +563,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Debt Deviations</h2>
-          <button className="outline-button" onClick={() => setShowDebtForm(true)} disabled={showDebtForm}>
+          <button className="outline-button" onClick={startAddDebtOverride} disabled={showDebtForm}>
             <Plus size={16} /> Debt Deviation
           </button>
         </div>
@@ -514,7 +586,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           emptyText="No debt deviations added yet."
         />
         {showDebtForm ? (
-          <form className="inline-form debt-form" onSubmit={addDebtOverride}>
+          <form className="inline-form debt-form" ref={debtFormRef} onSubmit={addDebtOverride}>
             <div className="form-heading">
               <strong>{editingDebtOverrideIndex === null ? 'Add Debt Deviation' : 'Edit Debt Deviation'}</strong>
               <button type="button" className="icon-button" onClick={() => {
@@ -528,7 +600,7 @@ export default function ScenarioBuilder({ isActive = false }) {
             </div>
             <div className="debt-form-columns">
               <div className="form-column">
-                <label>Debt Name<input placeholder="Debt name" value={debtForm.name} onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} required /></label>
+                <label>Debt Name<input placeholder="Debt" value={debtForm.name} onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} required /></label>
                 <label>Debt Type
                   <select value={debtForm.debtType} onChange={(e) => {
                     const nextForm = normalizeDebtFormForType({ ...debtForm, debtType: e.target.value });
@@ -550,7 +622,13 @@ export default function ScenarioBuilder({ isActive = false }) {
               </div>
               {!isOtherDebt(debtForm) ? (
                 <div className="form-column">
-                  <label>APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => {
+                  <label>Account
+                    <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
+                  <label>Standard APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => {
                     setDebtForm({ ...debtForm, aprPercentage: e.target.value });
                     if (isValidApr(e.target.value)) setDebtAprError('');
                   }} /></label>
@@ -559,9 +637,14 @@ export default function ScenarioBuilder({ isActive = false }) {
                   <label>Promo Start Date<input type="date" value={debtForm.promoStartDate} onChange={(e) => setDebtForm({ ...debtForm, promoStartDate: e.target.value })} /></label>
                   <label>Promo End Date<input type="date" value={debtForm.promoEndDate} onChange={(e) => setDebtForm({ ...debtForm, promoEndDate: e.target.value })} /></label>
                 </div>
-              ) : null}
-              <div className="form-column">
-                {isOtherDebt(debtForm) ? (
+              ) : (
+                <div className="form-column">
+                  <label>Account
+                    <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
+                      <option value="">Unassigned</option>
+                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    </select>
+                  </label>
                   <label>Recurring
                     <select value={debtForm.recurrence || 'monthly'} onChange={(e) => setDebtForm({ ...debtForm, recurrence: e.target.value, payoffTargetDate: e.target.value === 'one_time' ? '' : debtForm.payoffTargetDate })}>
                       <option value="one_time">One-Time</option>
@@ -571,19 +654,24 @@ export default function ScenarioBuilder({ isActive = false }) {
                       <option value="first_and_fifteenth">First and Fifteenth</option>
                     </select>
                   </label>
-                ) : null}
-                {isOtherDebt(debtForm) ? (
                   <>
                     <label>{isOneTimeOtherDebt(debtForm) ? 'Date' : 'Start Date'}<input type="date" value={debtForm.startDate} onChange={(e) => setDebtForm({ ...debtForm, startDate: e.target.value })} /></label>
                     {!isOneTimeOtherDebt(debtForm) ? (
                       <label>End Date<input type="date" value={debtForm.payoffTargetDate} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value })} /></label>
                     ) : null}
                   </>
-                ) : null}
-                <label>Priority<input type="number" min="1" placeholder="#" value={debtForm.priorityNumber} onChange={(e) => setDebtForm({ ...debtForm, priorityNumber: e.target.value })} /></label>
-                <label>Notes<input placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
-                <EstimatedPaymentFields form={debtForm} />
-              </div>
+                </div>
+              )}
+              {!isOtherDebt(debtForm) ? (
+                <div className="form-column debt-notes-column">
+                  <EstimatedPaymentFields form={debtForm} />
+                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
+                </div>
+              ) : (
+                <div className="form-column other-debt-notes-column">
+                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
+                </div>
+              )}
             </div>
             <div className="form-actions-row">
               <button className="primary-button">{editingDebtOverrideIndex === null ? 'Save Debt Change' : 'Update Debt Change'}</button>
@@ -663,6 +751,17 @@ function isOneTimeIncome(form) {
   return form.frequency === 'one_time';
 }
 
+function accountDisplayName(account) {
+  if (!account) return '-';
+  const bank = account.name || 'Account';
+  const accountType = String(account.account_type || account.accountType || '').trim();
+  const owner = String(account.owner || '').trim();
+  if (accountType && owner) return `${bank} - ${accountType} (${owner})`;
+  if (accountType) return `${bank} - ${accountType}`;
+  if (owner) return `${bank} (${owner})`;
+  return bank;
+}
+
 function isOtherDebt(formOrDebt) {
   return formOrDebt?.debtType === 'other' || formOrDebt?.debt_type === 'other';
 }
@@ -684,6 +783,7 @@ function normalizeDebtFormForType(form) {
     startingBalance: '',
     currentBalance: '',
     recurrence: form.recurrence || 'monthly',
+    priorityNumber: '',
     aprPercentage: '',
     promoAprPercentage: '',
     promoStartDate: '',
@@ -759,6 +859,10 @@ function sameId(left, right) {
 
 function comparableIncome(item = {}) {
   return JSON.stringify({
+    account_balance_id: item.account_balance_id || null,
+    is_account_transfer: Boolean(item.is_account_transfer),
+    from_account_id: item.from_account_id || null,
+    to_account_id: item.to_account_id || null,
     label: item.label || '',
     amount: Number(item.amount || 0),
     start_date: item.start_date || '',
@@ -771,6 +875,7 @@ function comparableIncome(item = {}) {
 
 function comparableDebt(item = {}) {
   return JSON.stringify({
+    account_balance_id: item.account_balance_id || null,
     name: item.name || '',
     debt_type: item.debt_type || '',
     current_balance: Number(item.current_balance || 0),

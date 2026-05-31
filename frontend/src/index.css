@@ -34,7 +34,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -95,7 +96,7 @@ button {
   background: transparent;
   border: 0;
   border-radius: 8px;
-  text-align: left;
+  text-align: center;
   font-weight: 700;
 }
 
@@ -415,11 +416,11 @@ button {
   color: var(--muted);
 }
 
-.year-row td {
+.projection-table .year-row td {
   background: #f1f4f9;
   color: var(--text);
   font-weight: 900;
-  text-align: left;
+  text-align: center !important;
 }
 
 .scenario-col {
@@ -451,7 +452,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -459,6 +461,11 @@ select {
   color: var(--text);
   background: white;
   min-width: 0;
+}
+
+textarea {
+  padding: 10px;
+  resize: vertical;
 }
 
 .column-picker {
@@ -534,6 +541,10 @@ select {
   border-top: 1px solid #edf1f7;
 }
 
+.account-balance-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .debt-form {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -555,6 +566,14 @@ select {
   background: #fbfdff;
 }
 
+.debt-notes-column textarea {
+  min-height: 104px;
+}
+
+.other-debt-notes-column textarea {
+  min-height: 154px;
+}
+
 .form-heading {
   grid-column: 1 / -1;
   display: flex;
@@ -565,6 +584,10 @@ select {
 
 .wide-field {
   grid-column: span 2;
+}
+
+.full-row-field {
+  grid-column: 1 / -1;
 }
 
 .form-note {
@@ -607,6 +630,15 @@ select {
 
 .income-deviation-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.income-deviation-grid.transfer-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.income-notes-field textarea {
+  height: 38px;
+  min-height: 38px;
 }
 
 .interest-schedule {
@@ -1343,7 +1375,7 @@ select {
 }
 
 .milestone-debt-name {
-  color: var(--purple);
+  color: var(--red);
 }
 
 .milestone-status {
@@ -1903,6 +1935,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .income-deviation-grid.transfer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .baseline-workflow-strip,
   .dashboard-analytics-row,
   .dashboard-selector-row,
@@ -2035,7 +2071,8 @@ select {
   .scenario-header-actions,
   .scenario-command-actions,
   .debt-deviation-grid,
-  .income-deviation-grid {
+  .income-deviation-grid,
+  .income-deviation-grid.transfer-grid {
     display: grid;
     grid-template-columns: 1fr;
     align-items: stretch;

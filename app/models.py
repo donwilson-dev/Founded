@@ -44,6 +44,10 @@ class IncomeSource(Base):
     __tablename__ = "income_sources"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    account_balance_id: Mapped[int | None] = mapped_column(ForeignKey("account_balances.id"), nullable=True)
+    is_account_transfer: Mapped[bool] = mapped_column(Boolean, default=False)
+    from_account_id: Mapped[int | None] = mapped_column(ForeignKey("account_balances.id"), nullable=True)
+    to_account_id: Mapped[int | None] = mapped_column(ForeignKey("account_balances.id"), nullable=True)
     label: Mapped[str] = mapped_column(String(120), nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -58,6 +62,8 @@ class AccountBalance(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    account_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -68,6 +74,7 @@ class Debt(Base):
     __tablename__ = "debts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    account_balance_id: Mapped[int | None] = mapped_column(ForeignKey("account_balances.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     debt_type: Mapped[DebtType] = mapped_column(Enum(DebtType), nullable=False)
     starting_balance: Mapped[float] = mapped_column(Float, nullable=False)

@@ -20,6 +20,10 @@ class DateRangeMixin(BaseModel):
 
 
 class IncomeSourceBase(DateRangeMixin):
+    account_balance_id: int | None = None
+    is_account_transfer: bool = False
+    from_account_id: int | None = None
+    to_account_id: int | None = None
     label: str = Field(min_length=1, max_length=120)
     amount: float = Field(ge=0)
     frequency: IncomeFrequency = IncomeFrequency.monthly
@@ -32,6 +36,10 @@ class IncomeSourceCreate(IncomeSourceBase):
 
 
 class IncomeSourceUpdate(BaseModel):
+    account_balance_id: int | None = None
+    is_account_transfer: bool | None = None
+    from_account_id: int | None = None
+    to_account_id: int | None = None
     label: str | None = Field(default=None, min_length=1, max_length=120)
     amount: float | None = Field(default=None, ge=0)
     start_date: Date | None = None
@@ -54,6 +62,8 @@ class IncomeSourceRead(IncomeSourceBase):
 
 class AccountBalanceBase(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    owner: str | None = Field(default=None, max_length=120)
+    account_type: str | None = Field(default=None, max_length=120)
     amount: float = Field(ge=0)
     date: Date
     notes: str | None = None
@@ -66,6 +76,8 @@ class AccountBalanceCreate(AccountBalanceBase):
 
 class AccountBalanceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    owner: str | None = Field(default=None, max_length=120)
+    account_type: str | None = Field(default=None, max_length=120)
     amount: float | None = Field(default=None, ge=0)
     date: Date | None = None
     notes: str | None = None
@@ -78,6 +90,7 @@ class AccountBalanceRead(AccountBalanceBase):
 
 
 class DebtBase(BaseModel):
+    account_balance_id: int | None = None
     name: str = Field(min_length=1, max_length=120)
     debt_type: DebtType
     starting_balance: float = Field(ge=0)
@@ -108,6 +121,7 @@ class ScenarioDebtOverride(DebtBase):
 
 
 class DebtUpdate(BaseModel):
+    account_balance_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=120)
     debt_type: DebtType | None = None
     starting_balance: float | None = Field(default=None, ge=0)

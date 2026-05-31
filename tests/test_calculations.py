@@ -524,8 +524,8 @@ def test_other_debt_first_fifteenth_end_date_cuts_off_second_occurrence():
 
 
 def test_account_balance_sets_starting_cash_position():
-    income = [obj(id=1, label="Salary", amount=1000, start_date=date(2026, 1, 1), end_date=None, active=True)]
-    account_balances = [obj(id=1, name="Checking", amount=500, date=date(2025, 12, 15), active=True)]
+    income = [obj(id=1, account_balance_id=1, label="Salary", amount=1000, start_date=date(2026, 1, 1), end_date=None, active=True)]
+    account_balances = [obj(id=1, name="Checking", owner="don", account_type="checking", amount=500, date=date(2025, 12, 15), active=True)]
 
     projection = generate_baseline_projection(income, [], [], date(2026, 1, 1), months=2, account_balances=account_balances)
     rows = projection["generated_rows"]
@@ -533,6 +533,9 @@ def test_account_balance_sets_starting_cash_position():
     assert rows[0]["Cash Balance"] == 1500
     assert rows[1]["Cash Balance"] == 2500
     assert projection["assumptions_snapshot"]["account_balances"][0]["name"] == "Checking"
+    assert projection["assumptions_snapshot"]["account_balances"][0]["owner"] == "don"
+    assert projection["assumptions_snapshot"]["account_balances"][0]["account_type"] == "checking"
+    assert projection["assumptions_snapshot"]["income_sources"][0]["account_balance_id"] == 1
 
 
 def test_cash_balance_subtracts_actual_debt_payments_from_income():

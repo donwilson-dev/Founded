@@ -76,6 +76,85 @@ def test_generate_save_and_retrieve_projection():
     assert missing.status_code == 404
 
 
+def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
+    account = client.post(
+        "/account-balances",
+        json={
+            "name": "USAA Checking",
+            "owner": "Don Wilson",
+            "account_type": "Money Market",
+            "amount": 5000,
+            "date": "2026-01-01",
+        },
+    )
+    assert account.status_code == 200
+    account_id = account.json()["id"]
+
+    income = client.post(
+        "/income-sources",
+        json={
+            "account_balance_id": account_id,
+            "label": "Military Pension",
+            "amount": 1000,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+        },
+    )
+    assert income.status_code == 200
+    transfer_income = client.post(
+        "/income-sources",
+        json={
+            "label": "Account Transfer Setup",
+            "amount": 2500,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+            "is_account_transfer": True,
+            "from_account_id": account_id,
+            "to_account_id": account_id,
+        },
+    )
+    assert transfer_income.status_code == 200
+
+    debt = client.post(
+        "/debts",
+        json={
+            "account_balance_id": account_id,
+            "name": "Truck Loan",
+            "debt_type": "vehicle_loan",
+            "starting_balance": 1000,
+            "current_balance": 1000,
+            "minimum_monthly_payment": 100,
+            "planned_extra_payment": 0,
+            "start_date": "2026-01-01",
+            "priority_number": 1,
+        },
+    )
+    assert debt.status_code == 200
+
+    generated = client.post(
+        "/projections/baseline/generate",
+        json={
+            "start_month": "2026-01-01",
+            "months": 1,
+            "account_balance_ids": [account_id],
+            "income_source_ids": [income.json()["id"], transfer_income.json()["id"]],
+            "debt_ids": [debt.json()["id"]],
+        },
+    )
+    assert generated.status_code == 200
+    snapshot = generated.json()["assumptions_snapshot"]
+
+    assert snapshot["account_balances"][0]["owner"] == "Don Wilson"
+    assert snapshot["account_balances"][0]["account_type"] == "Money Market"
+    assert snapshot["income_sources"][0]["account_balance_id"] == account_id
+    assert snapshot["income_sources"][1]["is_account_transfer"] is True
+    assert snapshot["income_sources"][1]["from_account_id"] == account_id
+    assert snapshot["income_sources"][1]["to_account_id"] == account_id
+    assert snapshot["debts"][0]["account_balance_id"] == account_id
+    assert generated.json()["generated_rows"][0]["Income"] == 1000
+    assert generated.json()["generated_rows"][0]["Cash Balance"] == 5900
+
+
 def test_saving_baseline_with_same_title_overwrites_existing_projection():
     generated = client.post("/projections/baseline/generate", json={"start_month": "2026-01-01", "months": 2}).json()
     first = client.post(
