@@ -44,6 +44,8 @@ def _ensure_sqlite_columns() -> None:
                 connection.execute(text("ALTER TABLE debts ADD COLUMN recurrence VARCHAR(20)"))
             if "account_balance_id" not in debt_columns:
                 connection.execute(text("ALTER TABLE debts ADD COLUMN account_balance_id INTEGER"))
+            if "payment_date" not in debt_columns:
+                connection.execute(text("ALTER TABLE debts ADD COLUMN payment_date DATE"))
         if inspector.has_table("income_sources"):
             income_columns = {column["name"] for column in inspector.get_columns("income_sources")}
             if "account_balance_id" not in income_columns:

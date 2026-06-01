@@ -29,6 +29,10 @@ import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
+const MAX_ACCOUNT_BALANCES = 15;
+const MAX_INCOME_SOURCES = 15;
+const MAX_DEBTS = 25;
+
 const initialIncome = {
   label: '',
   accountBalanceId: '',
@@ -62,6 +66,7 @@ const initialDebt = {
   minimumMonthlyPayment: '',
   actualPayment: '',
   plannedExtraPayment: '',
+  paymentDate: '',
   startDate: '',
   payoffTargetDate: '',
   priorityNumber: '',
@@ -130,6 +135,7 @@ export default function BaselineBuilder({ isActive = false }) {
   const [selectedSavedProjectionId, setSelectedSavedProjectionId] = useSessionState('founded.baseline.selectedSavedProjectionId', '');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [debtDateError, setDebtDateError] = useState('');
   const [pendingDeleteProjectionId, setPendingDeleteProjectionId] = useState(null);
   const accountBalanceFormRef = useRef(null);
   const incomeFormRef = useRef(null);
@@ -243,6 +249,10 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   function startAddAccountBalance() {
+    if (accountBalances.length >= MAX_ACCOUNT_BALANCES) {
+      setStatus('Maximum of 15 account balances reached.');
+      return;
+    }
     setEditingAccountBalanceId(null);
     setAccountBalanceForm({ ...initialAccountBalance, date: todayDate() });
     setShowAccountBalanceForm(true);
@@ -270,6 +280,10 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   function startAddIncome() {
+    if (incomeSources.length >= MAX_INCOME_SOURCES) {
+      setStatus('Maximum of 15 income sources reached.');
+      return;
+    }
     setEditingIncomeId(null);
     setIncomeForm({ ...initialIncome, startDate: todayDate() });
     setShowIncomeForm(true);
@@ -301,13 +315,18 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   function startAddDebt() {
+    if (debts.length >= MAX_DEBTS) {
+      setStatus('Maximum of 25 debts reached.');
+      return;
+    }
     setEditingDebtId(null);
     setDebtForm({ ...initialDebt, startDate: defaultDebtStartDate() });
+    setDebtDateError('');
     setShowDebtForm(true);
     focusOpenedForm(debtFormRef);
   }
 
-function startEditDebt(debt) {
+  function startEditDebt(debt) {
     const { promo, regular } = splitRates(debt.interest_rates);
     setEditingDebtId(debt.id);
     setDebtForm({
@@ -319,6 +338,7 @@ function startEditDebt(debt) {
       minimumMonthlyPayment: debt.minimum_monthly_payment ?? '',
       actualPayment: Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0),
       plannedExtraPayment: debt.planned_extra_payment ?? 0,
+      paymentDate: debt.payment_date || debt.paymentDate || '',
       startDate: debt.start_date || '',
       payoffTargetDate: debt.payoff_target_date || '',
       priorityNumber: debt.priority_number ?? '',
@@ -330,12 +350,14 @@ function startEditDebt(debt) {
       promoStartDate: promo?.start_date || '',
       promoEndDate: promo?.end_date || '',
     });
+    setDebtDateError('');
     setShowDebtForm(true);
   }
 
   function cancelDebtForm() {
     setEditingDebtId(null);
     setDebtForm(initialDebt);
+    setDebtDateError('');
     setShowDebtForm(false);
   }
 
@@ -421,6 +443,11 @@ function startEditDebt(debt) {
 
   async function submitDebt(event) {
     event.preventDefault();
+    if (!debtForm.paymentDate) {
+      setDebtDateError('Payment Date is required.');
+      setStatus('Payment Date is required.');
+      return;
+    }
     if (debtForm.debtType !== 'other' && debtForm.promoAprPercentage !== '' && (!debtForm.promoStartDate || !debtForm.promoEndDate)) {
       setStatus('Promo APR requires both Promo Start Date and Promo End Date.');
       return;
@@ -458,6 +485,7 @@ function startEditDebt(debt) {
         return exists ? items.map((item) => (item.id === debtWithRates.id ? debtWithRates : item)) : [...items, debtWithRates];
       });
       markWorkingBaselineChanged();
+      setDebtDateError('');
 
       cancelDebtForm();
       await refreshSavedProjections();
@@ -697,10 +725,10 @@ function startEditDebt(debt) {
         <div className="card-header">
           <h2>Income Sources</h2>
           <div className="header-actions">
-            <button className="outline-button" onClick={startAddAccountBalance} disabled={loading}>
+            <button className="outline-button" onClick={startAddAccountBalance} disabled={loading} title={accountBalances.length >= MAX_ACCOUNT_BALANCES ? 'Maximum of 15 account balances reached.' : undefined}>
               <Plus size={16} /> Account Balance
             </button>
-            <button className="outline-button" onClick={startAddIncome} disabled={loading}>
+            <button className="outline-button" onClick={startAddIncome} disabled={loading} title={incomeSources.length >= MAX_INCOME_SOURCES ? 'Maximum of 15 income sources reached.' : undefined}>
               <Plus size={16} /> Income
             </button>
           </div>
@@ -843,7 +871,7 @@ function startEditDebt(debt) {
       <section className="card data-card">
         <div className="card-header">
           <h2>Debts</h2>
-          <button className="outline-button" onClick={startAddDebt} disabled={loading}>
+          <button className="outline-button" onClick={startAddDebt} disabled={loading} title={debts.length >= MAX_DEBTS ? 'Maximum of 25 debts reached.' : undefined}>
             <Plus size={16} /> Debt
           </button>
         </div>
@@ -924,16 +952,15 @@ function startEditDebt(debt) {
                   </>
                 </div>
               )}
-              {!isOtherDebt(debtForm) ? (
-                <div className="form-column debt-notes-column">
-                  <EstimatedPaymentFields form={debtForm} />
-                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
-                </div>
-              ) : (
-                <div className="form-column other-debt-notes-column">
-                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
-                </div>
-              )}
+              <div className={`form-column ${isOtherDebt(debtForm) ? 'other-debt-notes-column' : 'debt-notes-column'}`}>
+                <label>Payment Date<input type="date" value={debtForm.paymentDate} onChange={(e) => {
+                  setDebtForm({ ...debtForm, paymentDate: e.target.value });
+                  if (e.target.value) setDebtDateError('');
+                }} /></label>
+                {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                <EstimatedPaymentFields form={debtForm} />
+                <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
+              </div>
             </div>
             <div className="form-actions-row">
               <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingDebtId ? 'Update Debt' : 'Save Debt'}</button>

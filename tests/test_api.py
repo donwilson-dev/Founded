@@ -125,6 +125,7 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
             "current_balance": 1000,
             "minimum_monthly_payment": 100,
             "planned_extra_payment": 0,
+            "payment_date": "2026-01-15",
             "start_date": "2026-01-01",
             "priority_number": 1,
         },
@@ -151,6 +152,7 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
     assert snapshot["income_sources"][1]["from_account_id"] == account_id
     assert snapshot["income_sources"][1]["to_account_id"] == account_id
     assert snapshot["debts"][0]["account_balance_id"] == account_id
+    assert snapshot["debts"][0]["payment_date"] == "2026-01-15"
     assert generated.json()["generated_rows"][0]["Income"] == 1000
     assert generated.json()["generated_rows"][0]["Cash Balance"] == 5900
 

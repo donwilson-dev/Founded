@@ -83,6 +83,7 @@ class Debt(Base):
     planned_extra_payment: Mapped[float] = mapped_column(Float, default=0)
     recurrence: Mapped[DebtRecurrence | None] = mapped_column(Enum(DebtRecurrence), nullable=True)
     payment_due_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     payoff_target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     priority_number: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -99,6 +99,7 @@ class DebtBase(BaseModel):
     planned_extra_payment: float = Field(default=0, ge=0)
     recurrence: DebtRecurrence | None = None
     payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    payment_date: Date | None = None
     start_date: Date
     payoff_target_date: Date | None = None
     priority_number: int | None = Field(default=None, ge=1)
@@ -130,6 +131,7 @@ class DebtUpdate(BaseModel):
     planned_extra_payment: float | None = Field(default=None, ge=0)
     recurrence: DebtRecurrence | None = None
     payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    payment_date: Date | None = None
     start_date: Date | None = None
     payoff_target_date: Date | None = None
     priority_number: int | None = Field(default=None, ge=1)

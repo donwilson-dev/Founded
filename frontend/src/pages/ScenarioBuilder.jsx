@@ -15,6 +15,9 @@ import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
+const MAX_INCOME_DEVIATIONS = 10;
+const MAX_DEBT_DEVIATIONS = 10;
+
 const incomeTemplate = {
   label: '',
   accountBalanceId: '',
@@ -37,6 +40,7 @@ const debtTemplate = {
   minimumMonthlyPayment: '',
   actualPayment: '',
   plannedExtraPayment: '',
+  paymentDate: '',
   startDate: '',
   payoffTargetDate: '',
   priorityNumber: '',
@@ -68,6 +72,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   const [editingDebtOverrideIndex, setEditingDebtOverrideIndex] = useState(null);
   const [editingIncomeOverrideIndex, setEditingIncomeOverrideIndex] = useState(null);
   const [debtAprError, setDebtAprError] = useState('');
+  const [debtDateError, setDebtDateError] = useState('');
   const incomeFormRef = useRef(null);
   const debtFormRef = useRef(null);
   const normalizedScenarioRows = useMemo(() => normalizeProjectionRows(scenario?.generated_rows || []), [scenario]);
@@ -89,11 +94,20 @@ export default function ScenarioBuilder({ isActive = false }) {
   }
 
   function startAddIncomeOverride() {
+    if (incomeOverrides.length >= MAX_INCOME_DEVIATIONS) {
+      setStatus('Maximum of 10 income deviations reached.');
+      return;
+    }
     setShowIncomeForm(true);
     focusOpenedForm(incomeFormRef);
   }
 
   function startAddDebtOverride() {
+    if (debtOverrides.length >= MAX_DEBT_DEVIATIONS) {
+      setStatus('Maximum of 10 debt deviations reached.');
+      return;
+    }
+    setDebtDateError('');
     setShowDebtForm(true);
     focusOpenedForm(debtFormRef);
   }
@@ -194,6 +208,11 @@ export default function ScenarioBuilder({ isActive = false }) {
       setStatus(isOtherDebt(debtForm) ? 'Debt Name and Debt Type are required.' : 'Debt Name, Debt Type, and Balance are required.');
       return;
     }
+    if (!debtForm.paymentDate) {
+      setDebtDateError('Payment Date is required.');
+      setStatus('Payment Date is required.');
+      return;
+    }
     if (!isOtherDebt(debtForm) && !isValidApr(debtForm.aprPercentage)) {
       setDebtAprError('APR is required for this debt type.');
       setStatus('APR is required for this debt type.');
@@ -211,6 +230,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     });
     setDebtForm(debtTemplate);
     setDebtAprError('');
+    setDebtDateError('');
     setEditingDebtOverrideIndex(null);
     setShowDebtForm(false);
     setScenario(null);
@@ -229,6 +249,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       currentBalance: item.debt.current_balance ?? '',
       minimumMonthlyPayment: item.debt.minimum_monthly_payment ?? '',
       actualPayment: Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0),
+      paymentDate: item.debt.payment_date || item.debt.paymentDate || '',
       startDate: item.debt.start_date || '',
       payoffTargetDate: item.debt.payoff_target_date || '',
       priorityNumber: item.debt.priority_number ?? '',
@@ -241,6 +262,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       promoEndDate: promo?.end_date || '',
     });
     setDebtAprError('');
+    setDebtDateError('');
     setShowDebtForm(true);
   }
 
@@ -250,6 +272,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       setEditingDebtOverrideIndex(null);
       setDebtForm(debtTemplate);
       setDebtAprError('');
+      setDebtDateError('');
       setShowDebtForm(false);
     }
     setScenario(null);
@@ -470,7 +493,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Income Deviations</h2>
-          <button className="outline-button" onClick={startAddIncomeOverride} disabled={showIncomeForm}>
+          <button className="outline-button" onClick={startAddIncomeOverride} disabled={showIncomeForm} title={incomeOverrides.length >= MAX_INCOME_DEVIATIONS ? 'Maximum of 10 income deviations reached.' : undefined}>
             <Plus size={16} /> Income Deviation
           </button>
         </div>
@@ -563,7 +586,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Debt Deviations</h2>
-          <button className="outline-button" onClick={startAddDebtOverride} disabled={showDebtForm}>
+          <button className="outline-button" onClick={startAddDebtOverride} disabled={showDebtForm} title={debtOverrides.length >= MAX_DEBT_DEVIATIONS ? 'Maximum of 10 debt deviations reached.' : undefined}>
             <Plus size={16} /> Debt Deviation
           </button>
         </div>
@@ -594,6 +617,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                 setEditingDebtOverrideIndex(null);
                 setDebtForm(debtTemplate);
                 setDebtAprError('');
+                setDebtDateError('');
               }} aria-label="Cancel debt deviation">
                 <X size={16} />
               </button>
@@ -662,16 +686,15 @@ export default function ScenarioBuilder({ isActive = false }) {
                   </>
                 </div>
               )}
-              {!isOtherDebt(debtForm) ? (
-                <div className="form-column debt-notes-column">
-                  <EstimatedPaymentFields form={debtForm} />
-                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
-                </div>
-              ) : (
-                <div className="form-column other-debt-notes-column">
-                  <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
-                </div>
-              )}
+              <div className={`form-column ${isOtherDebt(debtForm) ? 'other-debt-notes-column' : 'debt-notes-column'}`}>
+                <label>Payment Date<input type="date" value={debtForm.paymentDate} onChange={(e) => {
+                  setDebtForm({ ...debtForm, paymentDate: e.target.value });
+                  if (e.target.value) setDebtDateError('');
+                }} /></label>
+                {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                <EstimatedPaymentFields form={debtForm} />
+                <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
+              </div>
             </div>
             <div className="form-actions-row">
               <button className="primary-button">{editingDebtOverrideIndex === null ? 'Save Debt Change' : 'Update Debt Change'}</button>
@@ -882,6 +905,7 @@ function comparableDebt(item = {}) {
     minimum_monthly_payment: Number(item.minimum_monthly_payment || 0),
     planned_extra_payment: Number(item.planned_extra_payment || 0),
     recurrence: item.recurrence || null,
+    payment_date: item.payment_date || null,
     start_date: item.start_date || '',
     payoff_target_date: item.payoff_target_date || null,
     priority_number: item.priority_number || null,
