@@ -538,6 +538,204 @@ def test_account_balance_sets_starting_cash_position():
     assert projection["assumptions_snapshot"]["income_sources"][0]["account_balance_id"] == 1
 
 
+def test_account_projection_allocates_monthly_activity_and_reconciles_to_overall_cash():
+    income = [
+        obj(
+            id=1,
+            account_balance_id=1,
+            label="Salary",
+            amount=1000,
+            start_date=date(2026, 1, 1),
+            end_date=None,
+            frequency="monthly",
+            active=True,
+        ),
+        obj(
+            id=2,
+            label="Household Transfer",
+            amount=200,
+            start_date=date(2026, 1, 1),
+            end_date=None,
+            frequency="monthly",
+            is_account_transfer=True,
+            from_account_id=1,
+            to_account_id=2,
+            active=True,
+        ),
+    ]
+    debts = [
+        obj(
+            id=1,
+            account_balance_id=1,
+            name="Card",
+            debt_type="credit_card",
+            starting_balance=300,
+            current_balance=300,
+            minimum_monthly_payment=100,
+            planned_extra_payment=0,
+            start_date=date(2026, 1, 1),
+            priority_number=1,
+            active=True,
+        ),
+        obj(
+            id=2,
+            account_balance_id=2,
+            name="Utility",
+            debt_type="other",
+            starting_balance=0,
+            current_balance=0,
+            minimum_monthly_payment=50,
+            planned_extra_payment=0,
+            recurrence="monthly",
+            start_date=date(2026, 1, 1),
+            priority_number=None,
+            active=True,
+        ),
+    ]
+    account_balances = [
+        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=2, name="Joint Checking", owner="Joint", account_type="Checking", amount=500, date=date(2026, 1, 1), active=True),
+    ]
+
+    projection = generate_baseline_projection(income, debts, [], date(2026, 1, 1), months=1, account_balances=account_balances)
+    account_row = projection["account_projection_rows"][0]
+    don = next(account for account in account_row["accounts"] if account["account_balance_id"] == 1)
+    joint = next(account for account in account_row["accounts"] if account["account_balance_id"] == 2)
+
+    assert projection["generated_rows"][0]["Cash Balance"] == 2350
+    assert account_row["total_cash_balance"] == projection["generated_rows"][0]["Cash Balance"]
+    assert don["income"] == 1000
+    assert don["debt_payments"] == 100
+    assert don["transfers_out"] == 200
+    assert don["cash_balance"] == 1700
+    assert joint["bills"] == 50
+    assert joint["transfers_in"] == 200
+    assert joint["cash_balance"] == 650
+    assert projection["assumptions_snapshot"]["_account_projection_rows"][0]["total_cash_balance"] == 2350
+
+
+def test_account_projection_transfer_recurrence_moves_cash_without_changing_overall_totals():
+    income = [
+        obj(
+            id=1,
+            label="Weekly Transfer",
+            amount=100,
+            start_date=date(2026, 1, 1),
+            end_date=None,
+            frequency="weekly",
+            is_account_transfer=True,
+            from_account_id=1,
+            to_account_id=2,
+            active=True,
+        )
+    ]
+    account_balances = [
+        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=2, name="Joint Checking", owner="Joint", account_type="Checking", amount=0, date=date(2026, 1, 1), active=True),
+    ]
+
+    projection = generate_baseline_projection(income, [], [], date(2026, 1, 1), months=1, account_balances=account_balances)
+    account_row = projection["account_projection_rows"][0]
+    don = next(account for account in account_row["accounts"] if account["account_balance_id"] == 1)
+    joint = next(account for account in account_row["accounts"] if account["account_balance_id"] == 2)
+
+    assert projection["generated_rows"][0]["Income"] == 0
+    assert projection["generated_rows"][0]["Monthly Surplus"] == 0
+    assert projection["generated_rows"][0]["Cash Balance"] == 1000
+    assert don["transfers_out"] == 500
+    assert don["cash_balance"] == 500
+    assert joint["transfers_in"] == 500
+    assert joint["cash_balance"] == 500
+    assert account_row["total_cash_balance"] == 1000
+    owner_totals = {}
+    for account in account_row["accounts"]:
+        owner_totals[account["owner"]] = owner_totals.get(account["owner"], 0) + account["cash_balance"]
+    assert owner_totals["Don"] == 500
+    assert owner_totals["Joint"] == 500
+    assert sum(owner_totals.values()) == projection["generated_rows"][0]["Cash Balance"]
+
+
+def test_same_owner_transfer_preserves_owner_rollup_cash_balance():
+    income = [
+        obj(
+            id=1,
+            label="Don Transfer",
+            amount=250,
+            start_date=date(2026, 1, 1),
+            end_date=None,
+            frequency="monthly",
+            is_account_transfer=True,
+            from_account_id=1,
+            to_account_id=2,
+            active=True,
+        )
+    ]
+    account_balances = [
+        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=2, name="Don Savings", owner="Don", account_type="Savings", amount=100, date=date(2026, 1, 1), active=True),
+    ]
+
+    projection = generate_baseline_projection(income, [], [], date(2026, 1, 1), months=1, account_balances=account_balances)
+    account_row = projection["account_projection_rows"][0]
+    don_checking = next(account for account in account_row["accounts"] if account["account_balance_id"] == 1)
+    don_savings = next(account for account in account_row["accounts"] if account["account_balance_id"] == 2)
+    owner_total = sum(account["cash_balance"] for account in account_row["accounts"] if account["owner"] == "Don")
+
+    assert don_checking["cash_balance"] == 750
+    assert don_savings["cash_balance"] == 350
+    assert owner_total == 1100
+    assert account_row["total_cash_balance"] == projection["generated_rows"][0]["Cash Balance"]
+
+
+def test_scenario_account_projection_tracks_transfers_without_changing_scenario_overall_cash():
+    income = [
+        obj(
+            id=1,
+            account_balance_id=1,
+            label="Salary",
+            amount=1000,
+            start_date=date(2026, 1, 1),
+            end_date=None,
+            frequency="monthly",
+            active=True,
+        )
+    ]
+    account_balances = [
+        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=2, name="Joint Checking", owner="Joint", account_type="Checking", amount=0, date=date(2026, 1, 1), active=True),
+    ]
+    baseline = generate_baseline_projection(income, [], [], date(2026, 1, 1), months=1, account_balances=account_balances)
+
+    scenario = generate_scenario_projection(
+        baseline["generated_rows"],
+        baseline["assumptions_snapshot"],
+        date(2026, 1, 1),
+        income_overrides=[
+            obj(
+                id=2,
+                label="Scenario Transfer",
+                amount=300,
+                start_date=date(2026, 1, 1),
+                end_date=None,
+                frequency="monthly",
+                is_account_transfer=True,
+                from_account_id=1,
+                to_account_id=2,
+                active=True,
+            )
+        ],
+    )
+    scenario_account_row = scenario["scenario_account_projection_rows"][0]
+    don = next(account for account in scenario_account_row["accounts"] if account["account_balance_id"] == 1)
+    joint = next(account for account in scenario_account_row["accounts"] if account["account_balance_id"] == 2)
+
+    assert scenario["generated_rows"][0]["Cash Balance+"] == baseline["generated_rows"][0]["Cash Balance"]
+    assert scenario_account_row["total_cash_balance"] == scenario["generated_rows"][0]["Cash Balance+"]
+    assert don["cash_balance"] == 1700
+    assert joint["cash_balance"] == 300
+    assert scenario["assumptions_snapshot"]["_scenario_account_projection_rows"][0]["total_cash_balance"] == 2000
+
+
 def test_cash_balance_subtracts_actual_debt_payments_from_income():
     income = [obj(id=1, label="Salary", amount=1000, start_date=date(2026, 1, 1), end_date=None, active=True)]
     debts = [

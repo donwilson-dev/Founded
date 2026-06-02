@@ -55,6 +55,17 @@ export const TABLE_COLUMN_VIEWS = {
       'Cash Balance+',
     ],
   },
+  accountProjection: {
+    defaultColumns: [
+      'month',
+      'Income',
+      'Total Debt Payments',
+      'Bills',
+      'Transfers Out',
+      'Monthly Surplus',
+      'Cash Balance',
+    ],
+  },
 };
 
 export function getColumns(rows = []) {
@@ -72,6 +83,7 @@ export function columnLabel(column) {
   if (column === 'Total Debt') return 'Total Debt Balance';
   if (column === 'Remaining Cash') return 'Monthly Surplus';
   if (column === 'Remaining Cash+') return 'Monthly Surplus+';
+  if (column === 'Net Change') return 'Net Change';
   return column
     .replace(/\+/g, '+')
     .replace(/_/g, ' ')
@@ -100,25 +112,24 @@ export function groupRowsByYear(rows = []) {
 
 export function normalizeProjectionRows(rows = []) {
   return rows.map((row) => {
-    const payments = Number(row['Total Debt Payments+'] ?? row['Total Debt Payments'] ?? 0);
-    const bills = Number(row['Bills+'] ?? row['Bills'] ?? 0);
-    const interest = Number(row['Total Interest Charged+'] ?? row['Total Interest Charged'] ?? 0);
+    const payments = Number(row['Total Debt Payments'] ?? 0);
+    const interest = Number(row['Total Interest Charged'] ?? row.Interest ?? 0);
     const normalized = {
       ...row,
       Bills: row['Bills'] ?? 0,
       Interest: interest,
       Principal: Math.max(payments - interest, 0),
-      'Total Debt Balance': row['Total Debt+'] ?? row['Total Debt'] ?? 0,
+      'Total Debt Balance': row['Total Debt Balance'] ?? row['Total Debt'] ?? 0,
       'Monthly Surplus': row['Monthly Surplus'] ?? row['Remaining Cash'] ?? 0,
     };
-    if (row['Total Debt Payments+'] !== undefined || row['Bills+'] !== undefined || row['Total Interest Charged+'] !== undefined || row['Monthly Surplus+'] !== undefined || row['Remaining Cash+'] !== undefined) {
+    if (row['Total Debt Payments+'] !== undefined || row['Bills+'] !== undefined || row['Total Interest Charged+'] !== undefined || row['Total Debt+'] !== undefined || row['Monthly Surplus+'] !== undefined || row['Remaining Cash+'] !== undefined) {
       const scenarioPayments = Number(row['Total Debt Payments+'] ?? row['Total Debt Payments'] ?? 0);
-      const scenarioBills = Number(row['Bills+'] ?? bills);
+      const scenarioBills = Number(row['Bills+'] ?? row['Bills'] ?? 0);
       const scenarioInterest = Number(row['Total Interest Charged+'] ?? row['Total Interest Charged'] ?? 0);
       normalized['Bills+'] = scenarioBills;
       normalized['Interest+'] = scenarioInterest;
       normalized['Principal+'] = Math.max(scenarioPayments - scenarioInterest, 0);
-      normalized['Total Debt Balance+'] = row['Total Debt+'] ?? row['Total Debt'] ?? 0;
+      normalized['Total Debt Balance+'] = row['Total Debt Balance+'] ?? row['Total Debt+'] ?? row['Total Debt'] ?? 0;
       normalized['Monthly Surplus+'] = row['Monthly Surplus+'] ?? row['Remaining Cash+'] ?? row['Monthly Surplus'] ?? row['Remaining Cash'] ?? 0;
     }
     return normalized;

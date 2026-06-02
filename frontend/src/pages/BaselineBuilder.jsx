@@ -4,6 +4,7 @@ import {
   CircleDollarSign,
   CreditCard,
   Edit3,
+  GripVertical,
   Landmark,
   Plus,
   ReceiptText,
@@ -32,6 +33,7 @@ import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpe
 const MAX_ACCOUNT_BALANCES = 15;
 const MAX_INCOME_SOURCES = 15;
 const MAX_DEBTS = 25;
+const ACCOUNT_REFERENCE_MESSAGE = 'This account is currently referenced by existing records. Reassign or remove dependent records before deleting this account.';
 
 const initialIncome = {
   label: '',
@@ -185,6 +187,16 @@ export default function BaselineBuilder({ isActive = false }) {
   }, [isActive, selectedSavedProjectionId]);
 
   useEffect(() => {
+    if (!isActive) return;
+    const section = window.sessionStorage.getItem('founded.baseline.focusSection');
+    if (!section) return;
+    window.sessionStorage.removeItem('founded.baseline.focusSection');
+    window.setTimeout(() => {
+      document.querySelector(`[data-baseline-section="${section}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, [isActive, accountBalances.length, incomeSources.length, debts.length]);
+
+  useEffect(() => {
     function openRequestedProjection(event) {
       const requestedId = event.detail?.projectionId || window.sessionStorage.getItem('founded.baseline.openProjectionId');
       if (!requestedId) return;
@@ -233,6 +245,55 @@ export default function BaselineBuilder({ isActive = false }) {
   const editingDebt = debts.find((debt) => debt.id === editingDebtId);
   const selectedSavedProjection = savedProjections.find((item) => String(item.id) === String(selectedSavedProjectionId));
   const activeAccountBalances = useMemo(() => accountBalances.filter((item) => item.active !== false), [accountBalances]);
+
+  function reorderAccountBalances(fromIndex, toIndex) {
+    setAccountBalances((items) => reorderItems(items, fromIndex, toIndex));
+  }
+
+  function reorderIncomeSources(fromIndex, toIndex) {
+    setIncomeSources((items) => reorderItems(items, fromIndex, toIndex));
+  }
+
+  function reorderDebts(fromIndex, toIndex) {
+    setDebts((items) => reorderItems(items, fromIndex, toIndex));
+  }
+
+  function accountOptionsFor(selectedId) {
+    const options = [...activeAccountBalances];
+    const selected = accountBalances.find((account) => String(account.id) === String(selectedId));
+    if (selected && !options.some((account) => String(account.id) === String(selected.id))) {
+      options.push(selected);
+    }
+    return options;
+  }
+
+  function accountExists(accountId) {
+    return accountBalances.some((account) => String(account.id) === String(accountId));
+  }
+
+  function validateAccountSelection(accountId, label = 'Account') {
+    if (!accountId) return `${label} is required.`;
+    if (!accountExists(accountId)) return `${label} is no longer available.`;
+    return '';
+  }
+
+  function validateIncomeAccountSelection() {
+    if (incomeForm.isAccountTransfer) {
+      return validateAccountSelection(incomeForm.fromAccountId, 'From Account')
+        || validateAccountSelection(incomeForm.toAccountId, 'To Account')
+        || (String(incomeForm.fromAccountId) === String(incomeForm.toAccountId) ? 'From Account and To Account must be different.' : '');
+    }
+    return validateAccountSelection(incomeForm.accountBalanceId);
+  }
+
+  function accountIsReferenced(accountId) {
+    const matches = (value) => String(value || '') === String(accountId);
+    return incomeSources.some((source) => (
+      matches(source.account_balance_id ?? source.accountBalanceId)
+      || matches(source.from_account_id ?? source.fromAccountId)
+      || matches(source.to_account_id ?? source.toAccountId)
+    )) || debts.some((debt) => matches(debt.account_balance_id ?? debt.accountBalanceId));
+  }
 
   function focusOpenedForm(ref) {
     window.setTimeout(() => {
@@ -386,6 +447,10 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteAccountBalance(balance) {
+    if (accountIsReferenced(balance.id)) {
+      setStatus(ACCOUNT_REFERENCE_MESSAGE);
+      return;
+    }
     if (!window.confirm(`Delete account balance "${balance.name}"?`)) return;
     setLoading(true);
     try {
@@ -403,6 +468,11 @@ export default function BaselineBuilder({ isActive = false }) {
 
   async function submitIncome(event) {
     event.preventDefault();
+    const accountError = validateIncomeAccountSelection();
+    if (accountError) {
+      setStatus(accountError);
+      return;
+    }
     setLoading(true);
     try {
       if (editingIncomeId) {
@@ -443,7 +513,12 @@ export default function BaselineBuilder({ isActive = false }) {
 
   async function submitDebt(event) {
     event.preventDefault();
-    if (!debtForm.paymentDate) {
+    const accountError = validateAccountSelection(debtForm.accountBalanceId);
+    if (accountError) {
+      setStatus(accountError);
+      return;
+    }
+    if (!isOtherDebt(debtForm) && !debtForm.paymentDate) {
       setDebtDateError('Payment Date is required.');
       setStatus('Payment Date is required.');
       return;
@@ -552,7 +627,15 @@ export default function BaselineBuilder({ isActive = false }) {
         incomeSourceIds: incomeSources.map((item) => item.id),
         debtIds: debts.map((item) => item.id),
       });
-      setProjection(generated);
+      setProjection({
+        ...generated,
+        assumptions_snapshot: buildSourceSnapshot(
+          accountBalances,
+          incomeSources,
+          debts,
+          generated.assumptions_snapshot
+        ),
+      });
       setStatus('Baseline projection generated.');
     } catch (error) {
       setStatus(error.message);
@@ -566,7 +649,12 @@ export default function BaselineBuilder({ isActive = false }) {
       setStatus('Baseline Title is required.');
       return;
     }
-    const assumptionsSnapshot = projection?.assumptions_snapshot || buildSourceSnapshot(accountBalances, incomeSources, debts);
+    const assumptionsSnapshot = buildSourceSnapshot(
+      accountBalances,
+      incomeSources,
+      debts,
+      projection?.assumptions_snapshot
+    );
     const generatedRows = projection?.generated_rows || [];
     setLoading(true);
     try {
@@ -577,8 +665,7 @@ export default function BaselineBuilder({ isActive = false }) {
         assumptionsSnapshot,
         generatedRows,
       });
-      setProjectionTitle('');
-      setProjectionNotes('');
+      setProjectionTitle(projectionTitle);
       setStatus(generatedRows.length ? 'Projection saved.' : 'Baseline source state saved.');
       await refreshSavedProjections();
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
@@ -733,9 +820,11 @@ export default function BaselineBuilder({ isActive = false }) {
             </button>
           </div>
         </div>
-        <div className="subsection-title">Account Balances</div>
+        <div className="subsection-title" data-baseline-section="account-balances">Account Balances</div>
         <CrudTable
           columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Status', 'Actions']}
+          sectionId="account-balances"
+          onReorder={reorderAccountBalances}
           rows={accountBalances.map((item) => ({
             id: item.id,
             cells: [
@@ -776,6 +865,8 @@ export default function BaselineBuilder({ isActive = false }) {
         <div className="subsection-title">Income Sources</div>
         <CrudTable
           columns={['Name', 'Account', 'Start Date', 'Amount', 'Frequency', 'Status', 'Actions']}
+          sectionId="income-sources"
+          onReorder={reorderIncomeSources}
           rows={incomeSources.map((item) => ({
             id: item.id,
             cells: [
@@ -804,14 +895,14 @@ export default function BaselineBuilder({ isActive = false }) {
               <>
                 <label>From Account
                   <select value={incomeForm.fromAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, fromAccountId: e.target.value })}>
-                    <option value="">Unassigned</option>
-                    {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    <option value="">Select account</option>
+                    {accountOptionsFor(incomeForm.fromAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                   </select>
                 </label>
                 <label>To Account
                   <select value={incomeForm.toAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, toAccountId: e.target.value })}>
-                    <option value="">Unassigned</option>
-                    {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    <option value="">Select account</option>
+                    {accountOptionsFor(incomeForm.toAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                   </select>
                 </label>
               </>
@@ -819,8 +910,8 @@ export default function BaselineBuilder({ isActive = false }) {
               <>
                 <label>Account
                   <select value={incomeForm.accountBalanceId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, accountBalanceId: e.target.value })}>
-                    <option value="">Unassigned</option>
-                    {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    <option value="">Select account</option>
+                    {accountOptionsFor(incomeForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                   </select>
                 </label>
                 <label>Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
@@ -868,7 +959,7 @@ export default function BaselineBuilder({ isActive = false }) {
         )}
       </section>
 
-      <section className="card data-card">
+      <section className="card data-card" data-baseline-section="debts">
         <div className="card-header">
           <h2>Debts</h2>
           <button className="outline-button" onClick={startAddDebt} disabled={loading} title={debts.length >= MAX_DEBTS ? 'Maximum of 25 debts reached.' : undefined}>
@@ -876,7 +967,9 @@ export default function BaselineBuilder({ isActive = false }) {
           </button>
         </div>
         <CrudTable
-          columns={['Debt Name', 'Type', 'Balance', 'Min. Payment', 'Actual Payment', 'APR', 'Actions']}
+          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Actions']}
+          sectionId="debts"
+          onReorder={reorderDebts}
           rows={debts.map((item) => ({
             id: item.id,
             cells: [
@@ -904,7 +997,11 @@ export default function BaselineBuilder({ isActive = false }) {
               <div className="form-column">
                 <label>Debt Name<input placeholder="Debt" value={debtForm.name} onChange={(e) => setDebtForm({ ...debtForm, name: e.target.value })} required /></label>
                 <label>Debt Type
-                  <select value={debtForm.debtType} onChange={(e) => setDebtForm(normalizeDebtFormForType({ ...debtForm, debtType: e.target.value }))}>
+                  <select value={debtForm.debtType} onChange={(e) => {
+                    const nextForm = normalizeDebtFormForType({ ...debtForm, debtType: e.target.value });
+                    setDebtForm(nextForm);
+                    if (isOtherDebt(nextForm) || nextForm.paymentDate) setDebtDateError('');
+                  }}>
                     {['credit_card', 'personal_loan', 'vehicle_loan', 'student_loan', 'other'].map((type) => <option key={type} value={type}>{labelize(type)}</option>)}
                   </select>
                 </label>
@@ -918,8 +1015,8 @@ export default function BaselineBuilder({ isActive = false }) {
                 <div className="form-column">
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Standard APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => setDebtForm({ ...debtForm, aprPercentage: e.target.value })} /></label>
@@ -931,8 +1028,8 @@ export default function BaselineBuilder({ isActive = false }) {
                 <div className="form-column">
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {activeAccountBalances.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Recurring
@@ -953,11 +1050,15 @@ export default function BaselineBuilder({ isActive = false }) {
                 </div>
               )}
               <div className={`form-column ${isOtherDebt(debtForm) ? 'other-debt-notes-column' : 'debt-notes-column'}`}>
-                <label>Payment Date<input type="date" value={debtForm.paymentDate} onChange={(e) => {
-                  setDebtForm({ ...debtForm, paymentDate: e.target.value });
-                  if (e.target.value) setDebtDateError('');
-                }} /></label>
-                {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                {!isOtherDebt(debtForm) ? (
+                  <>
+                    <label>Payment Date<input type="date" value={debtForm.paymentDate} onChange={(e) => {
+                      setDebtForm({ ...debtForm, paymentDate: e.target.value });
+                      if (e.target.value) setDebtDateError('');
+                    }} /></label>
+                    {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                  </>
+                ) : null}
                 <EstimatedPaymentFields form={debtForm} />
                 <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
               </div>
@@ -1010,17 +1111,63 @@ export default function BaselineBuilder({ isActive = false }) {
   );
 }
 
-function CrudTable({ columns, rows, empty }) {
+function CrudTable({ columns, rows, empty, onReorder, sectionId }) {
   if (!rows.length) return <div className="mini-table-empty">{empty}</div>;
+  const draggable = typeof onReorder === 'function' && rows.length > 1;
+  const reorderType = 'application/x-founded-reorder';
   return (
     <div className="mini-table-wrap">
-      <table className="mini-table">
-        <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+      <table className={`mini-table ${draggable ? 'reorderable-table' : ''}`}>
+        <thead>
+          <tr>
+            {draggable ? <th className="drag-column" aria-label="Reorder rows" /> : null}
+            {columns.map((column) => <th key={column} className={column === 'Actions' ? 'actions-column' : undefined}>{column}</th>)}
+          </tr>
+        </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
+          {rows.map((row, index) => (
+            <tr
+              key={row.id}
+              draggable={draggable}
+              onDragStart={(event) => {
+                if (!draggable) return;
+                activeBaselineDrag = { sectionId, rowId: row.id };
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData(reorderType, JSON.stringify({ sectionId, rowId: row.id }));
+                event.dataTransfer.setData('text/plain', JSON.stringify({ sectionId, rowId: row.id }));
+                event.currentTarget.classList.add('dragging-row');
+              }}
+              onDragEnd={(event) => {
+                activeBaselineDrag = null;
+                event.currentTarget.classList.remove('dragging-row');
+              }}
+              onDragOver={(event) => {
+                if (!draggable) return;
+                const payload = activeBaselineDrag || parseReorderPayload(event.dataTransfer.getData('text/plain'));
+                if (payload.sectionId !== sectionId) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => {
+                if (!draggable) return;
+                const payload = activeBaselineDrag || parseReorderPayload(event.dataTransfer.getData(reorderType)) || parseReorderPayload(event.dataTransfer.getData('text/plain'));
+                if (payload.sectionId !== sectionId) return;
+                event.preventDefault();
+                activeBaselineDrag = null;
+                const fromIndex = rows.findIndex((item) => String(item.id) === String(payload.rowId));
+                if (fromIndex < 0) return;
+                onReorder(fromIndex, index);
+              }}
+            >
+              {draggable ? (
+                <td className="drag-cell">
+                  <span className="drag-handle" title="Drag to reorder" aria-label="Drag to reorder">
+                    <GripVertical size={15} />
+                  </span>
+                </td>
+              ) : null}
               {row.cells.map((cell, index) => <td key={index}>{cell}</td>)}
-              <td>
+              <td className="actions-column">
                 <div className="row-actions">
                   <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit row">
                     <Edit3 size={15} />
@@ -1036,6 +1183,26 @@ function CrudTable({ columns, rows, empty }) {
       </table>
     </div>
   );
+}
+
+let activeBaselineDrag = null;
+
+function reorderItems(items, fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
+    return items;
+  }
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+function parseReorderPayload(value) {
+  try {
+    return JSON.parse(value || '{}');
+  } catch {
+    return {};
+  }
 }
 
 function InterestSchedule({ debt, onDeleteRate, loading }) {
@@ -1104,14 +1271,15 @@ function debtAprLabel(debt) {
   return debt.interest_rates?.[0] ? percent(debt.interest_rates[0].apr_percentage) : '0%';
 }
 
-function buildSourceSnapshot(accountBalances = [], incomeSources = [], debts = []) {
+function buildSourceSnapshot(accountBalances = [], incomeSources = [], debts = [], baseSnapshot = {}) {
   const interestRates = debts.flatMap((debt) => debt.interest_rates || []);
   return {
-    account_balances: accountBalances,
-    income_sources: incomeSources,
-    debts: debts.map(({ interest_rates: _interestRates, ...debt }) => debt),
+    ...baseSnapshot,
+    account_balances: withDisplayOrder(accountBalances),
+    income_sources: withDisplayOrder(incomeSources),
+    debts: withDisplayOrder(debts.map(({ interest_rates: _interestRates, ...debt }) => debt)),
     interest_rates: interestRates,
-    _projection_summary: { projected_payoff_date: null },
+    _projection_summary: baseSnapshot._projection_summary || { projected_payoff_date: null },
   };
 }
 
@@ -1121,13 +1289,28 @@ function restoreSourcesFromProjection(snapshot = {}) {
   const interestRates = snapshot.interest_rates || snapshot.baseline_assumptions?.interest_rates || [];
   const accountBalances = snapshot.account_balances || snapshot.baseline_assumptions?.account_balances || [];
   return {
-    accountBalances,
-    incomeSources,
-    debts: debts.map((debt) => ({
+    accountBalances: sortByDisplayOrder(accountBalances),
+    incomeSources: sortByDisplayOrder(incomeSources),
+    debts: sortByDisplayOrder(debts).map((debt) => ({
       ...debt,
       interest_rates: interestRates.filter((rate) => Number(rate.debt_id) === Number(debt.id)),
     })),
   };
+}
+
+function withDisplayOrder(items = []) {
+  return items.map((item, index) => ({ ...item, display_order: index }));
+}
+
+function sortByDisplayOrder(items = []) {
+  return [...items].sort((left, right) => {
+    const leftOrder = left.display_order ?? left.displayOrder;
+    const rightOrder = right.display_order ?? right.displayOrder;
+    if (leftOrder === undefined && rightOrder === undefined) return 0;
+    if (leftOrder === undefined) return 1;
+    if (rightOrder === undefined) return -1;
+    return Number(leftOrder) - Number(rightOrder);
+  });
 }
 
 export const baselineInstructions = {

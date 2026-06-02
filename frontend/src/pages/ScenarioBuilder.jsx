@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, GitCompare, Plus, Save, Trash2, X } from 'lucide-react';
+import { Edit3, GitCompare, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
@@ -80,9 +80,18 @@ export default function ScenarioBuilder({ isActive = false }) {
   const selectedBaseline = saved.find((item) => String(item.id) === String(baselineId));
   const baselineReady = Boolean(baseline && selectedBaseline);
   const baselineAccounts = useMemo(
-    () => (baseline?.assumptions_snapshot?.account_balances || baseline?.assumptions_snapshot?.baseline_assumptions?.account_balances || []).filter((item) => item.active !== false),
+    () => baseline?.assumptions_snapshot?.account_balances || baseline?.assumptions_snapshot?.baseline_assumptions?.account_balances || [],
     [baseline]
   );
+  const activeBaselineAccounts = useMemo(() => baselineAccounts.filter((item) => item.active !== false), [baselineAccounts]);
+
+  function reorderIncomeOverrides(fromIndex, toIndex) {
+    setIncomeOverrides((items) => reorderItems(items, fromIndex, toIndex));
+  }
+
+  function reorderDebtOverrides(fromIndex, toIndex) {
+    setDebtOverrides((items) => reorderItems(items, fromIndex, toIndex));
+  }
 
   function focusOpenedForm(ref) {
     window.setTimeout(() => {
@@ -91,6 +100,34 @@ export default function ScenarioBuilder({ isActive = false }) {
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       form.querySelector('input, select, textarea')?.focus({ preventScroll: true });
     }, 0);
+  }
+
+  function accountOptionsFor(selectedId) {
+    const options = [...activeBaselineAccounts];
+    const selected = baselineAccounts.find((account) => String(account.id) === String(selectedId));
+    if (selected && !options.some((account) => String(account.id) === String(selected.id))) {
+      options.push(selected);
+    }
+    return options;
+  }
+
+  function accountExists(accountId) {
+    return baselineAccounts.some((account) => String(account.id) === String(accountId));
+  }
+
+  function validateAccountSelection(accountId, label = 'Account') {
+    if (!accountId) return `${label} is required.`;
+    if (!accountExists(accountId)) return `${label} is no longer available.`;
+    return '';
+  }
+
+  function validateIncomeAccountSelection() {
+    if (incomeForm.isAccountTransfer) {
+      return validateAccountSelection(incomeForm.fromAccountId, 'From Account')
+        || validateAccountSelection(incomeForm.toAccountId, 'To Account')
+        || (String(incomeForm.fromAccountId) === String(incomeForm.toAccountId) ? 'From Account and To Account must be different.' : '');
+    }
+    return validateAccountSelection(incomeForm.accountBalanceId);
   }
 
   function startAddIncomeOverride() {
@@ -191,6 +228,11 @@ export default function ScenarioBuilder({ isActive = false }) {
       setStatus('Name and Changed Amount are required.');
       return;
     }
+    const accountError = validateIncomeAccountSelection();
+    if (accountError) {
+      setStatus(accountError);
+      return;
+    }
     const nextIncome = toIncomePayload(incomeForm, { startDate: baselineStartMonth(baseline), frequency: 'monthly' });
     setIncomeOverrides((items) => {
       if (editingIncomeOverrideIndex === null) return [...items, nextIncome];
@@ -208,7 +250,12 @@ export default function ScenarioBuilder({ isActive = false }) {
       setStatus(isOtherDebt(debtForm) ? 'Debt Name and Debt Type are required.' : 'Debt Name, Debt Type, and Balance are required.');
       return;
     }
-    if (!debtForm.paymentDate) {
+    const accountError = validateAccountSelection(debtForm.accountBalanceId);
+    if (accountError) {
+      setStatus(accountError);
+      return;
+    }
+    if (!isOtherDebt(debtForm) && !debtForm.paymentDate) {
       setDebtDateError('Payment Date is required.');
       setStatus('Payment Date is required.');
       return;
@@ -312,8 +359,8 @@ export default function ScenarioBuilder({ isActive = false }) {
     try {
       const generated = await foundedApi.generateScenario({
         baselineProjectionId: baselineId,
-        incomeOverrides,
-        debtOverrides: debtOverrides.map((item) => item.debt),
+        incomeOverrides: withDisplayOrder(incomeOverrides),
+        debtOverrides: withDisplayOrder(debtOverrides.map((item) => item.debt)),
         interestRateOverrides: debtOverrides.flatMap((item) => item.rates || (item.rate ? [item.rate] : [])).filter(Boolean),
       });
       setScenario(generated);
@@ -330,8 +377,8 @@ export default function ScenarioBuilder({ isActive = false }) {
     try {
       const savedScenario = await foundedApi.saveScenario({
         baselineProjectionId: baselineId,
-        incomeOverrides,
-        debtOverrides: debtOverrides.map((item) => item.debt),
+        incomeOverrides: withDisplayOrder(incomeOverrides),
+        debtOverrides: withDisplayOrder(debtOverrides.map((item) => item.debt)),
         interestRateOverrides: debtOverrides.flatMap((item) => item.rates || (item.rate ? [item.rate] : [])).filter(Boolean),
         title: selectedSavedScenario?.title || defaultScenarioTitle(baseline),
         notes: null,
@@ -499,6 +546,8 @@ export default function ScenarioBuilder({ isActive = false }) {
         </div>
         <DeviationTable
           columns={['Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Status', 'Actions']}
+          sectionId="income-deviations"
+          onReorder={reorderIncomeOverrides}
           rows={incomeOverrides.map((item, index) => ({
             id: `${item.label}-${index}`,
             cells: [
@@ -532,14 +581,14 @@ export default function ScenarioBuilder({ isActive = false }) {
                 <>
                   <label>From Account
                     <select value={incomeForm.fromAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, fromAccountId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(incomeForm.fromAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>To Account
                     <select value={incomeForm.toAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, toAccountId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(incomeForm.toAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
@@ -548,8 +597,8 @@ export default function ScenarioBuilder({ isActive = false }) {
                 <>
                   <label>Account
                     <select value={incomeForm.accountBalanceId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, accountBalanceId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(incomeForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
@@ -591,7 +640,9 @@ export default function ScenarioBuilder({ isActive = false }) {
           </button>
         </div>
         <DeviationTable
-          columns={['Debt Name', 'Type', 'Balance', 'Min. Payment', 'Actual Payment', 'APR', 'Status', 'Actions']}
+          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Status', 'Actions']}
+          sectionId="debt-deviations"
+          onReorder={reorderDebtOverrides}
           rows={debtOverrides.map((item, index) => ({
             id: item.debt.id || index,
             cells: [
@@ -630,6 +681,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                     const nextForm = normalizeDebtFormForType({ ...debtForm, debtType: e.target.value });
                     setDebtForm(nextForm);
                     if (isOtherDebt(nextForm) || isValidApr(nextForm.aprPercentage)) setDebtAprError('');
+                    if (isOtherDebt(nextForm) || nextForm.paymentDate) setDebtDateError('');
                   }}>
                     {['credit_card', 'personal_loan', 'vehicle_loan', 'student_loan', 'other'].map((type) => (
                       <option key={type} value={type}>
@@ -648,8 +700,8 @@ export default function ScenarioBuilder({ isActive = false }) {
                 <div className="form-column">
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Standard APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => {
@@ -665,8 +717,8 @@ export default function ScenarioBuilder({ isActive = false }) {
                 <div className="form-column">
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
-                      <option value="">Unassigned</option>
-                      {baselineAccounts.map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      <option value="">Select account</option>
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Recurring
@@ -687,11 +739,15 @@ export default function ScenarioBuilder({ isActive = false }) {
                 </div>
               )}
               <div className={`form-column ${isOtherDebt(debtForm) ? 'other-debt-notes-column' : 'debt-notes-column'}`}>
-                <label>Payment Date<input type="date" value={debtForm.paymentDate} onChange={(e) => {
-                  setDebtForm({ ...debtForm, paymentDate: e.target.value });
-                  if (e.target.value) setDebtDateError('');
-                }} /></label>
-                {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                {!isOtherDebt(debtForm) ? (
+                  <>
+                    <label>Payment Date<input type="date" value={debtForm.paymentDate} onChange={(e) => {
+                      setDebtForm({ ...debtForm, paymentDate: e.target.value });
+                      if (e.target.value) setDebtDateError('');
+                    }} /></label>
+                    {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                  </>
+                ) : null}
                 <EstimatedPaymentFields form={debtForm} />
                 <label>Notes<textarea placeholder="Optional notes" value={debtForm.notes} onChange={(e) => setDebtForm({ ...debtForm, notes: e.target.value })} /></label>
               </div>
@@ -732,19 +788,63 @@ export default function ScenarioBuilder({ isActive = false }) {
   );
 }
 
-function DeviationTable({ columns, rows, emptyText }) {
+function DeviationTable({ columns, rows, emptyText, onReorder, sectionId }) {
   if (!rows.length) return <p className="helper-text">{emptyText}</p>;
+  const draggable = typeof onReorder === 'function' && rows.length > 1;
+  const reorderType = 'application/x-founded-reorder';
   return (
     <div className="mini-table-wrap deviation-table-wrap">
-      <table className="mini-table deviation-table">
+      <table className={`mini-table deviation-table ${draggable ? 'reorderable-table' : ''}`}>
         <thead>
-          <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
+          <tr>
+            {draggable ? <th className="drag-column" aria-label="Reorder rows" /> : null}
+            {columns.map((column) => <th key={column} className={column === 'Actions' ? 'actions-column' : undefined}>{column}</th>)}
+          </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
+          {rows.map((row, index) => (
+            <tr
+              key={row.id}
+              draggable={draggable}
+              onDragStart={(event) => {
+                if (!draggable) return;
+                activeScenarioDrag = { sectionId, rowId: row.id };
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData(reorderType, JSON.stringify({ sectionId, rowId: row.id }));
+                event.dataTransfer.setData('text/plain', JSON.stringify({ sectionId, rowId: row.id }));
+                event.currentTarget.classList.add('dragging-row');
+              }}
+              onDragEnd={(event) => {
+                activeScenarioDrag = null;
+                event.currentTarget.classList.remove('dragging-row');
+              }}
+              onDragOver={(event) => {
+                if (!draggable) return;
+                const payload = activeScenarioDrag || parseReorderPayload(event.dataTransfer.getData('text/plain'));
+                if (payload.sectionId !== sectionId) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => {
+                if (!draggable) return;
+                const payload = activeScenarioDrag || parseReorderPayload(event.dataTransfer.getData(reorderType)) || parseReorderPayload(event.dataTransfer.getData('text/plain'));
+                if (payload.sectionId !== sectionId) return;
+                event.preventDefault();
+                activeScenarioDrag = null;
+                const fromIndex = rows.findIndex((item) => String(item.id) === String(payload.rowId));
+                if (fromIndex < 0) return;
+                onReorder(fromIndex, index);
+              }}
+            >
+              {draggable ? (
+                <td className="drag-cell">
+                  <span className="drag-handle" title="Drag to reorder" aria-label="Drag to reorder">
+                    <GripVertical size={15} />
+                  </span>
+                </td>
+              ) : null}
               {row.cells.map((cell, index) => <td key={index}>{cell}</td>)}
-              <td>
+              <td className="actions-column">
                 <div className="row-actions">
                   <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit deviation">
                     <Edit3 size={15} />
@@ -760,6 +860,41 @@ function DeviationTable({ columns, rows, emptyText }) {
       </table>
     </div>
   );
+}
+
+let activeScenarioDrag = null;
+
+function reorderItems(items, fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {
+    return items;
+  }
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+function parseReorderPayload(value) {
+  try {
+    return JSON.parse(value || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function withDisplayOrder(items = []) {
+  return items.map((item, index) => ({ ...item, display_order: index }));
+}
+
+function sortByDisplayOrder(items = []) {
+  return [...items].sort((left, right) => {
+    const leftOrder = left.display_order ?? left.displayOrder;
+    const rightOrder = right.display_order ?? right.displayOrder;
+    if (leftOrder === undefined && rightOrder === undefined) return 0;
+    if (leftOrder === undefined) return 1;
+    if (rightOrder === undefined) return -1;
+    return Number(leftOrder) - Number(rightOrder);
+  });
 }
 
 function baselineStartMonth(baseline) {
@@ -828,8 +963,8 @@ function restoreScenarioOverrides(assumptions = {}) {
   const explicit = assumptions.scenario_overrides || {};
   if (explicit.income_overrides || explicit.debt_overrides || explicit.interest_rate_overrides) {
     return {
-      incomeOverrides: explicit.income_overrides || [],
-      debtOverrides: buildDebtOverrideRows(explicit.debt_overrides || [], explicit.interest_rate_overrides || []),
+      incomeOverrides: sortByDisplayOrder(explicit.income_overrides || []),
+      debtOverrides: buildDebtOverrideRows(sortByDisplayOrder(explicit.debt_overrides || []), explicit.interest_rate_overrides || []),
     };
   }
 
@@ -841,12 +976,12 @@ function restoreScenarioOverrides(assumptions = {}) {
   const baselineRates = baseline.interest_rates || [];
   const scenarioRates = assumptions.interest_rates || [];
 
-  const incomeOverrides = scenarioIncome.filter((item) => {
+  const incomeOverrides = sortByDisplayOrder(scenarioIncome).filter((item) => {
     const baselineItem = baselineIncome.find((candidate) => identityMatches(candidate, item, 'label'));
     return !baselineItem || comparableIncome(baselineItem) !== comparableIncome(item);
   });
 
-  const debtOverrides = scenarioDebts
+  const debtOverrides = sortByDisplayOrder(scenarioDebts)
     .filter((item) => {
       const baselineItem = baselineDebts.find((candidate) => identityMatches(candidate, item, 'name'));
       const debtChanged = !baselineItem || comparableDebt(baselineItem) !== comparableDebt(item);

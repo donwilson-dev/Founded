@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import AccountBalance
 from app.schemas import AccountBalanceCreate, AccountBalanceRead, AccountBalanceUpdate
+from app.services.account_integrity import ensure_account_can_be_deleted
 
 router = APIRouter(prefix="/account-balances", tags=["Account Balances"])
 
@@ -47,6 +48,7 @@ def delete_account_balance(account_balance_id: int, db: Session = Depends(get_db
     balance = db.get(AccountBalance, account_balance_id)
     if not balance:
         raise HTTPException(status_code=404, detail="Account balance not found")
+    ensure_account_can_be_deleted(db, account_balance_id)
     db.delete(balance)
     db.commit()
     return None

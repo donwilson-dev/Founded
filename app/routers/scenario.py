@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models import ProjectionType, SavedProjection
 from app.schemas import SavedProjectionRead, ScenarioGenerateRequest
 from app.services.calculations import generate_baseline_projection, generate_scenario_projection, json_ready
+from app.services.account_integrity import validate_debt_account_assignment, validate_income_account_assignment
 from app.services.saved_projections import save_or_update_projection
 
 router = APIRouter(prefix="/scenario", tags=["Scenario"])
@@ -35,6 +36,24 @@ def baseline_start_month(baseline_rows: list[dict]):
     return baseline_rows[0]["month"]
 
 
+def validate_scenario_account_assignments(payload: ScenarioGenerateRequest, baseline_assumptions: dict):
+    account_rows = baseline_assumptions.get("account_balances") or baseline_assumptions.get("baseline_assumptions", {}).get("account_balances", [])
+    accounts = {int(account["id"]): account for account in account_rows if account.get("id") is not None}
+
+    class SnapshotSession:
+        def get(self, model, item_id):
+            if model.__name__ != "AccountBalance":
+                return None
+            return accounts.get(int(item_id))
+
+    snapshot_db = SnapshotSession()
+    existing_account_ids = set(accounts)
+    for income in payload.income_overrides or []:
+        validate_income_account_assignment(snapshot_db, income.model_dump(), existing_account_ids=existing_account_ids)
+    for debt in payload.debt_overrides or []:
+        validate_debt_account_assignment(snapshot_db, debt.model_dump(), existing_account_ids=existing_account_ids)
+
+
 @router.post("/generate")
 def generate_scenario(payload: ScenarioGenerateRequest, db: Session = Depends(get_db)):
     baseline = db.get(SavedProjection, payload.baseline_projection_id)
@@ -43,6 +62,7 @@ def generate_scenario(payload: ScenarioGenerateRequest, db: Session = Depends(ge
     if baseline.projection_type != ProjectionType.baseline:
         raise HTTPException(status_code=400, detail="Scenario generation requires a saved baseline")
     baseline_rows, baseline_assumptions = prepared_baseline_projection(baseline)
+    validate_scenario_account_assignments(payload, baseline_assumptions)
     generated = generate_scenario_projection(
         baseline_rows,
         baseline_assumptions,
@@ -73,6 +93,7 @@ def save_scenario(payload: ScenarioGenerateRequest, db: Session = Depends(get_db
     if baseline.projection_type != ProjectionType.baseline:
         raise HTTPException(status_code=400, detail="Scenario generation requires a saved baseline")
     baseline_rows, baseline_assumptions = prepared_baseline_projection(baseline)
+    validate_scenario_account_assignments(payload, baseline_assumptions)
     generated = generate_scenario_projection(
         baseline_rows,
         baseline_assumptions,

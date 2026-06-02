@@ -9,6 +9,7 @@ function formatCell(column, value) {
   if (column === 'Monthly Surplus' || column === 'Monthly Surplus+' || column === 'Remaining Cash' || column === 'Remaining Cash+') {
     return signedCurrencyPrecise(value);
   }
+  if (column === 'Net Change') return signedCurrencyPrecise(value);
   if (typeof value === 'number' && isMoneyColumn(column)) return currencyPrecise(value);
   if (typeof value === 'number') return Number(value).toLocaleString();
   if (value === null || value === undefined || value === '') return '-';
@@ -73,6 +74,12 @@ function cellClassName(column, value) {
   const classes = [];
   if (column.endsWith('+')) classes.push('scenario-col');
   if (column === 'Monthly Surplus' || column === 'Monthly Surplus+' || column === 'Remaining Cash' || column === 'Remaining Cash+') {
+    classes.push('monthly-surplus-cell');
+    const number = Number(value || 0);
+    if (number > 0) classes.push('surplus-positive');
+    if (number < 0) classes.push('surplus-negative');
+  }
+  if (column === 'Net Change') {
     classes.push('monthly-surplus-cell');
     const number = Number(value || 0);
     if (number > 0) classes.push('surplus-positive');

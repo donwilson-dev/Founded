@@ -1,11 +1,27 @@
 import React from 'react';
 import { useEffect, useMemo } from 'react';
-import FilterBar from './FilterBar.jsx';
+import FilterBar, { ExportDropdown } from './FilterBar.jsx';
 import YearGroupedTable from './YearGroupedTable.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { getColumns } from '../utils/tableHelpers.js';
 
-export default function ProjectionTable({ rows = [], title = 'Projection Overview', preferredColumns = [], initialVisibleCount = 10, storageKey = '' }) {
+export default function ProjectionTable({
+  rows = [],
+  title = 'Projection Overview',
+  preferredColumns = [],
+  initialVisibleCount = 10,
+  storageKey = '',
+  ownerOptions,
+  ownerValue,
+  onOwnerChange,
+  accountOptions,
+  accountValue,
+  onAccountChange,
+  emptyText,
+  visibilityResetKey = '',
+  exportOptions,
+  onExport,
+}) {
   const columns = useMemo(() => {
     const discovered = getColumns(rows);
     const preferred = preferredColumns.filter((column) => discovered.includes(column));
@@ -20,20 +36,19 @@ export default function ProjectionTable({ rows = [], title = 'Projection Overvie
     const preferred = preferredColumns.filter((column) => columns.includes(column));
     return preferred.length ? preferred : columns.slice(0, initialVisibleCount);
   }, [columns, preferredColumns, initialVisibleCount]);
+  const defaultVisibleSignature = defaultVisibleColumns.join('|');
 
   useEffect(() => {
-    setVisibleColumns((current) => {
-      const valid = current.filter((column) => columns.includes(column));
-      const base = valid.length ? valid : defaultVisibleColumns;
-      const requiredDefaults = ['Monthly Surplus+', 'Cash Balance', 'Cash Balance+'].filter((column) => columns.includes(column));
-      return [...new Set([...base, ...requiredDefaults])];
-    });
-  }, [columnSignature, initialVisibleCount, defaultVisibleColumns]);
+    setVisibleColumns(defaultVisibleColumns);
+  }, [columnSignature, defaultVisibleSignature, visibilityResetKey]);
 
   return (
     <section className="card table-card">
-      <div className="section-title-row">
-        <h2>{title}</h2>
+      <div className="section-title-row projection-overview-header">
+        <div className="projection-title-actions">
+          <h2>{title}</h2>
+          <ExportDropdown exportOptions={exportOptions} onExport={onExport} />
+        </div>
         <FilterBar
           filters={filters}
           onChange={setFilters}
@@ -43,10 +58,18 @@ export default function ProjectionTable({ rows = [], title = 'Projection Overvie
           onReset={() => {
             setFilters({});
             setVisibleColumns(defaultVisibleColumns);
+            onOwnerChange?.('overall');
+            onAccountChange?.('all');
           }}
+          ownerOptions={ownerOptions}
+          ownerValue={ownerValue}
+          onOwnerChange={onOwnerChange}
+          accountOptions={accountOptions}
+          accountValue={accountValue}
+          onAccountChange={onAccountChange}
         />
       </div>
-      <YearGroupedTable rows={rows} columns={columns} visibleColumns={visibleColumns} filters={filters} />
+      <YearGroupedTable rows={rows} columns={columns} visibleColumns={visibleColumns} filters={filters} emptyText={emptyText} />
     </section>
   );
 }

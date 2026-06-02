@@ -452,6 +452,174 @@ def starting_cash_balance(account_balances: Iterable[Any] | None, start_month: d
     return round(total, 2)
 
 
+def _account_key(value: Any) -> Any:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _account_label(account: dict[str, Any]) -> str:
+    name = account.get("name") or "Unassigned"
+    account_type = account.get("account_type")
+    owner = account.get("owner")
+    details = " ".join(str(part).strip() for part in (account_type, owner) if part)
+    return f"{name} ({details})" if details else str(name)
+
+
+def transfer_amount_for_month(source: dict[str, Any], month: date) -> float:
+    if not source.get("is_account_transfer"):
+        return 0.0
+    return float(source.get("amount") or 0) * occurrence_count_for_month(
+        source.get("frequency", "monthly"),
+        source["start_date"],
+        source.get("end_date"),
+        month,
+        active=source.get("active", True),
+    )
+
+
+def _empty_account_activity() -> dict[str, float]:
+    return {
+        "income": 0.0,
+        "debt_payments": 0.0,
+        "bills": 0.0,
+        "transfers_in": 0.0,
+        "transfers_out": 0.0,
+    }
+
+
+def generate_account_projection_rows(
+    income_sources: Iterable[Any],
+    debts: Iterable[Any],
+    projection_rows: list[dict[str, Any]],
+    account_balances: Iterable[Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Project monthly cash balances for each account without changing household rows."""
+    if not projection_rows:
+        return []
+
+    income_data = [as_dict(item) for item in income_sources]
+    debt_data = [as_dict(item) for item in debts if as_dict(item).get("active", True)]
+    account_data = [as_dict(item) for item in (account_balances or [])]
+    start_month = first_of_month(projection_rows[0]["month"])
+    accounts: dict[Any, dict[str, Any]] = {}
+    account_order: list[Any] = []
+
+    def ensure_account(account_id: Any, seed: dict[str, Any] | None = None) -> Any:
+        key = _account_key(account_id)
+        if key not in accounts:
+            raw = dict(seed or {})
+            accounts[key] = {
+                "account_balance_id": key,
+                "name": raw.get("name") or ("Unassigned" if key is None else f"Account {key}"),
+                "owner": raw.get("owner"),
+                "account_type": raw.get("account_type"),
+            }
+            account_order.append(key)
+        return key
+
+    balances: dict[Any, float] = {}
+    for raw_account in account_data:
+        if not raw_account.get("active", True):
+            continue
+        key = ensure_account(raw_account.get("id"), raw_account)
+        balances[key] = 0.0
+        if raw_account.get("date") and first_of_month(raw_account["date"]) <= start_month:
+            balances[key] = round(float(raw_account.get("amount") or 0), 2)
+
+    for source in income_data:
+        if source.get("is_account_transfer"):
+            ensure_account(source.get("from_account_id"))
+            ensure_account(source.get("to_account_id"))
+        else:
+            ensure_account(source.get("account_balance_id"))
+    for debt in debt_data:
+        ensure_account(debt.get("account_balance_id"))
+    for key in account_order:
+        balances.setdefault(key, 0.0)
+
+    rows: list[dict[str, Any]] = []
+    for projection_row in projection_rows:
+        month = first_of_month(projection_row["month"])
+        account_activity = {key: _empty_account_activity() for key in account_order}
+
+        for source in income_data:
+            if source.get("is_account_transfer"):
+                amount = transfer_amount_for_month(source, month)
+                if amount == 0:
+                    continue
+                from_key = ensure_account(source.get("from_account_id"))
+                to_key = ensure_account(source.get("to_account_id"))
+                account_activity.setdefault(from_key, _empty_account_activity())
+                account_activity.setdefault(to_key, _empty_account_activity())
+                balances.setdefault(from_key, 0.0)
+                balances.setdefault(to_key, 0.0)
+                account_activity[from_key]["transfers_out"] += amount
+                account_activity[to_key]["transfers_in"] += amount
+            else:
+                amount = monthly_income_amount(source, month)
+                account_key = ensure_account(source.get("account_balance_id"))
+                account_activity.setdefault(account_key, _empty_account_activity())
+                balances.setdefault(account_key, 0.0)
+                account_activity[account_key]["income"] += amount
+
+        for debt in debt_data:
+            account_key = ensure_account(debt.get("account_balance_id"))
+            account_activity.setdefault(account_key, _empty_account_activity())
+            balances.setdefault(account_key, 0.0)
+            name = debt.get("_projection_label") or debt.get("name")
+            if not name:
+                continue
+            if is_bill(debt):
+                account_activity[account_key]["bills"] += float(projection_row.get(f"{name} Bill", 0) or 0)
+            else:
+                account_activity[account_key]["debt_payments"] += float(projection_row.get(f"{name} Payment", 0) or 0)
+
+        account_rows = []
+        for account_key in account_order:
+            activity = account_activity.setdefault(account_key, _empty_account_activity())
+            starting_balance = balances.get(account_key, 0.0)
+            ending_balance = (
+                starting_balance
+                + activity["income"]
+                - activity["debt_payments"]
+                - activity["bills"]
+                + activity["transfers_in"]
+                - activity["transfers_out"]
+            )
+            balances[account_key] = round(ending_balance, 2)
+            account = accounts[account_key]
+            account_rows.append(
+                {
+                    "account_balance_id": account["account_balance_id"],
+                    "name": account["name"],
+                    "label": _account_label(account),
+                    "owner": account.get("owner"),
+                    "account_type": account.get("account_type"),
+                    "starting_balance": round(starting_balance, 2),
+                    "income": round(activity["income"], 2),
+                    "debt_payments": round(activity["debt_payments"], 2),
+                    "bills": round(activity["bills"], 2),
+                    "transfers_in": round(activity["transfers_in"], 2),
+                    "transfers_out": round(activity["transfers_out"], 2),
+                    "cash_balance": round(balances[account_key], 2),
+                }
+            )
+
+        rows.append(
+            {
+                "month": projection_row["month"],
+                "accounts": account_rows,
+                "total_cash_balance": round(sum(account["cash_balance"] for account in account_rows), 2),
+            }
+        )
+
+    return json_ready(rows)
+
+
 def generate_baseline_projection(
     income_sources: Iterable[Any],
     debts: Iterable[Any],
@@ -562,6 +730,7 @@ def generate_baseline_projection(
         payoff_rows = extended["generated_rows"]
     payoff_metrics = calculate_payoff_metrics(debt_data, rate_data, start_month, payoff_rows)
     projected_payoff_date = payoff_metrics["payoffMonth"]
+    account_projection_rows = generate_account_projection_rows(income_data, debt_data, rows, account_balances)
 
     assumptions_snapshot = snapshot_assumptions(income_data, debt_data, rate_data, account_balances)
     assumptions_snapshot["_projection_summary"] = {
@@ -570,11 +739,13 @@ def generate_baseline_projection(
         "total_projected_interest": payoff_metrics["totalProjectedInterest"],
         "payoff_status": payoff_metrics["payoffStatus"],
     }
+    assumptions_snapshot["_account_projection_rows"] = account_projection_rows
 
     return {
         "projection_type": "baseline",
         "assumptions_snapshot": assumptions_snapshot,
         "generated_rows": rows,
+        "account_projection_rows": account_projection_rows,
         "summary": {
             "projected_payoff_date": projected_payoff_date,
             "months_to_debt_free": payoff_metrics["monthsToDebtFree"],
@@ -673,6 +844,13 @@ def generate_scenario_projection(
         account_balances=baseline_assumptions.get("account_balances", []),
     )
     scenario_by_month = {row["month"]: row for row in scenario["generated_rows"]}
+    baseline_account_projection_rows = generate_account_projection_rows(
+        baseline_assumptions.get("income_sources", []),
+        baseline_assumptions.get("debts", []),
+        baseline_rows,
+        baseline_assumptions.get("account_balances", []),
+    )
+    scenario_account_projection_rows = scenario.get("account_projection_rows", [])
 
     rows = []
     for baseline_row in baseline_rows:
@@ -699,6 +877,8 @@ def generate_scenario_projection(
                     "total_projected_interest": scenario.get("summary", {}).get("total_projected_interest"),
                     "payoff_status": scenario.get("summary", {}).get("payoff_status"),
                 },
+                "_account_projection_rows": baseline_account_projection_rows,
+                "_scenario_account_projection_rows": scenario_account_projection_rows,
                 "baseline_assumptions": baseline_assumptions,
                 "scenario_start_month": start,
                 "scenario_end_month": end,
@@ -709,6 +889,8 @@ def generate_scenario_projection(
             }
         ),
         "generated_rows": rows,
+        "account_projection_rows": baseline_account_projection_rows,
+        "scenario_account_projection_rows": scenario_account_projection_rows,
         "summary": scenario.get("summary", {}),
     }
 

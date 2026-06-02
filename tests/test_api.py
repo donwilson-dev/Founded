@@ -50,6 +50,51 @@ def setup_function():
         db.close()
 
 
+def create_account(name="Checking", active=True):
+    response = client.post(
+        "/account-balances",
+        json={"name": name, "amount": 5000, "date": "2026-01-01", "active": active},
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def create_saved_baseline_with_account(title="Baseline", start_month="2026-01-01", months=3):
+    account = create_account()
+    income = client.post(
+        "/income-sources",
+        json={
+            "account_balance_id": account["id"],
+            "label": "Salary",
+            "amount": 5000,
+            "start_date": start_month,
+            "frequency": "monthly",
+        },
+    )
+    assert income.status_code == 200
+    generated = client.post(
+        "/projections/baseline/generate",
+        json={
+            "start_month": start_month,
+            "months": months,
+            "account_balance_ids": [account["id"]],
+            "income_source_ids": [income.json()["id"]],
+            "debt_ids": [],
+        },
+    ).json()
+    saved = client.post(
+        "/projections",
+        json={
+            "title": title,
+            "projection_type": "baseline",
+            "assumptions_snapshot": generated["assumptions_snapshot"],
+            "generated_rows": generated["generated_rows"],
+        },
+    )
+    assert saved.status_code == 200
+    return saved.json(), account, income.json()
+
+
 def test_generate_save_and_retrieve_projection():
     generated = client.post("/projections/baseline/generate", json={"start_month": "2026-01-01", "months": 3})
     assert generated.status_code == 200
@@ -89,6 +134,18 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
     )
     assert account.status_code == 200
     account_id = account.json()["id"]
+    transfer_target = client.post(
+        "/account-balances",
+        json={
+            "name": "USAA Joint",
+            "owner": "Joint",
+            "account_type": "Checking",
+            "amount": 0,
+            "date": "2026-01-01",
+        },
+    )
+    assert transfer_target.status_code == 200
+    transfer_target_id = transfer_target.json()["id"]
 
     income = client.post(
         "/income-sources",
@@ -110,7 +167,7 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
             "frequency": "monthly",
             "is_account_transfer": True,
             "from_account_id": account_id,
-            "to_account_id": account_id,
+            "to_account_id": transfer_target_id,
         },
     )
     assert transfer_income.status_code == 200
@@ -150,11 +207,296 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
     assert snapshot["income_sources"][0]["account_balance_id"] == account_id
     assert snapshot["income_sources"][1]["is_account_transfer"] is True
     assert snapshot["income_sources"][1]["from_account_id"] == account_id
-    assert snapshot["income_sources"][1]["to_account_id"] == account_id
+    assert snapshot["income_sources"][1]["to_account_id"] == transfer_target_id
     assert snapshot["debts"][0]["account_balance_id"] == account_id
     assert snapshot["debts"][0]["payment_date"] == "2026-01-15"
     assert generated.json()["generated_rows"][0]["Income"] == 1000
     assert generated.json()["generated_rows"][0]["Cash Balance"] == 5900
+    assert generated.json()["account_projection_rows"][0]["total_cash_balance"] == 5900
+    assert snapshot["_account_projection_rows"][0]["total_cash_balance"] == 5900
+
+
+def test_income_debt_and_transfer_api_require_accounts():
+    income = client.post(
+        "/income-sources",
+        json={"label": "Unassigned Salary", "amount": 1000, "start_date": "2026-01-01", "frequency": "monthly"},
+    )
+    debt = client.post(
+        "/debts",
+        json={
+            "name": "Unassigned Debt",
+            "debt_type": "credit_card",
+            "starting_balance": 1000,
+            "current_balance": 1000,
+            "minimum_monthly_payment": 100,
+            "planned_extra_payment": 0,
+            "payment_date": "2026-01-15",
+            "start_date": "2026-01-01",
+        },
+    )
+    transfer = client.post(
+        "/income-sources",
+        json={
+            "label": "Transfer",
+            "amount": 100,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+            "is_account_transfer": True,
+        },
+    )
+
+    assert income.status_code == 422
+    assert income.json()["detail"] == "Account is required."
+    assert debt.status_code == 422
+    assert debt.json()["detail"] == "Account is required."
+    assert transfer.status_code == 422
+    assert transfer.json()["detail"] == "From Account is required."
+
+
+def test_account_transfer_api_rejects_same_from_and_to_account():
+    account = create_account()
+
+    transfer = client.post(
+        "/income-sources",
+        json={
+            "label": "Same Account Transfer",
+            "amount": 500,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+            "is_account_transfer": True,
+            "from_account_id": account["id"],
+            "to_account_id": account["id"],
+        },
+    )
+
+    assert transfer.status_code == 422
+    assert transfer.json()["detail"] == "From Account and To Account must be different."
+
+
+def test_account_transfers_do_not_change_overall_projection_totals():
+    from_account = create_account("Don Checking")
+    to_account = create_account("Joint Checking")
+    transfer = client.post(
+        "/income-sources",
+        json={
+            "label": "Household Transfer",
+            "amount": 500,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+            "is_account_transfer": True,
+            "from_account_id": from_account["id"],
+            "to_account_id": to_account["id"],
+        },
+    )
+    assert transfer.status_code == 200
+
+    generated = client.post(
+        "/projections/baseline/generate",
+        json={
+            "start_month": "2026-01-01",
+            "months": 2,
+            "account_balance_ids": [from_account["id"], to_account["id"]],
+            "income_source_ids": [transfer.json()["id"]],
+            "debt_ids": [],
+        },
+    )
+
+    assert generated.status_code == 200
+    rows = generated.json()["generated_rows"]
+    assert rows[0]["Income"] == 0
+    assert rows[0]["Monthly Surplus"] == 0
+    assert rows[0]["Cash Balance"] == 10000
+    assert rows[1]["Income"] == 0
+    assert rows[1]["Monthly Surplus"] == 0
+    assert rows[1]["Cash Balance"] == 10000
+
+
+def test_inactive_accounts_are_not_selectable_for_new_records_but_existing_links_can_update():
+    account = create_account()
+    income = client.post(
+        "/income-sources",
+        json={
+            "account_balance_id": account["id"],
+            "label": "Salary",
+            "amount": 1000,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+        },
+    ).json()
+    disabled = client.patch(f"/account-balances/{account['id']}", json={"active": False})
+    assert disabled.status_code == 200
+
+    new_income = client.post(
+        "/income-sources",
+        json={
+            "account_balance_id": account["id"],
+            "label": "New Salary",
+            "amount": 1000,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+        },
+    )
+    updated_existing = client.patch(f"/income-sources/{income['id']}", json={"label": "Updated Salary"})
+
+    assert new_income.status_code == 422
+    assert new_income.json()["detail"] == "Account must be an active account."
+    assert updated_existing.status_code == 200
+    assert updated_existing.json()["label"] == "Updated Salary"
+
+
+def test_referenced_account_cannot_be_deleted():
+    account = create_account()
+    income = client.post(
+        "/income-sources",
+        json={
+            "account_balance_id": account["id"],
+            "label": "Protected Salary",
+            "amount": 1000,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+        },
+    )
+    assert income.status_code == 200
+
+    deleted = client.delete(f"/account-balances/{account['id']}")
+
+    assert deleted.status_code == 409
+    assert "Reassign or remove dependent records" in deleted.json()["detail"]
+
+
+def test_account_referenced_by_saved_projection_cannot_be_deleted():
+    saved, account, income = create_saved_baseline_with_account(title="Protected Baseline")
+    removed_income = client.delete(f"/income-sources/{income['id']}")
+    assert removed_income.status_code == 204
+
+    deleted = client.delete(f"/account-balances/{account['id']}")
+
+    assert saved["id"]
+    assert deleted.status_code == 409
+    assert "Reassign or remove dependent records" in deleted.json()["detail"]
+
+
+def test_scenario_overrides_require_accounts_from_baseline_snapshot():
+    saved, _account, _income = create_saved_baseline_with_account()
+
+    missing_income_account = client.post(
+        "/scenario/generate",
+        json={
+            "baseline_projection_id": saved["id"],
+            "income_overrides": [
+                {"label": "Scenario Income", "amount": 6000, "start_date": "2026-01-01"}
+            ],
+        },
+    )
+    missing_debt_account = client.post(
+        "/scenario/generate",
+        json={
+            "baseline_projection_id": saved["id"],
+            "debt_overrides": [
+                {
+                    "name": "Scenario Debt",
+                    "debt_type": "credit_card",
+                    "starting_balance": 1000,
+                    "current_balance": 1000,
+                    "minimum_monthly_payment": 100,
+                    "planned_extra_payment": 0,
+                    "payment_date": "2026-01-15",
+                    "start_date": "2026-01-01",
+                }
+            ],
+        },
+    )
+
+    assert missing_income_account.status_code == 422
+    assert missing_income_account.json()["detail"] == "Account is required."
+    assert missing_debt_account.status_code == 422
+    assert missing_debt_account.json()["detail"] == "Account is required."
+
+
+def test_scenario_transfer_override_rejects_same_from_and_to_account():
+    saved, account, _income = create_saved_baseline_with_account()
+
+    response = client.post(
+        "/scenario/generate",
+        json={
+            "baseline_projection_id": saved["id"],
+            "income_overrides": [
+                {
+                    "label": "Scenario Transfer",
+                    "amount": 250,
+                    "start_date": "2026-01-01",
+                    "frequency": "monthly",
+                    "is_account_transfer": True,
+                    "from_account_id": account["id"],
+                    "to_account_id": account["id"],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "From Account and To Account must be different."
+
+
+def test_scenario_transfer_override_allowed_and_preserves_overall_totals():
+    from_account = create_account("Don Checking")
+    to_account = create_account("Joint Checking")
+    income = client.post(
+        "/income-sources",
+        json={
+            "account_balance_id": from_account["id"],
+            "label": "Salary",
+            "amount": 5000,
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+        },
+    )
+    assert income.status_code == 200
+    generated = client.post(
+        "/projections/baseline/generate",
+        json={
+            "start_month": "2026-01-01",
+            "months": 3,
+            "account_balance_ids": [from_account["id"], to_account["id"]],
+            "income_source_ids": [income.json()["id"]],
+            "debt_ids": [],
+        },
+    ).json()
+    saved = client.post(
+        "/projections",
+        json={
+            "title": "Transfer Baseline",
+            "projection_type": "baseline",
+            "assumptions_snapshot": generated["assumptions_snapshot"],
+            "generated_rows": generated["generated_rows"],
+        },
+    ).json()
+    baseline = client.get(f"/projections/{saved['id']}").json()
+    baseline_first = baseline["generated_rows"][0]
+
+    response = client.post(
+        "/scenario/generate",
+        json={
+            "baseline_projection_id": saved["id"],
+            "income_overrides": [
+                {
+                    "label": "Scenario Transfer",
+                    "amount": 250,
+                    "start_date": "2026-01-01",
+                    "frequency": "monthly",
+                    "is_account_transfer": True,
+                    "from_account_id": from_account["id"],
+                    "to_account_id": to_account["id"],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    first = response.json()["generated_rows"][0]
+    assert first["Income+"] == baseline_first["Income"]
+    assert first["Monthly Surplus+"] == baseline_first["Monthly Surplus"]
+    assert first["Cash Balance+"] == baseline_first["Cash Balance"]
 
 
 def test_saving_baseline_with_same_title_overwrites_existing_projection():
@@ -222,9 +564,11 @@ def test_generate_projection_can_be_scoped_to_selected_working_inputs():
 
 
 def test_other_debt_accepts_one_time_recurrence_and_blank_optional_fields():
+    account = create_account()
     debt = client.post(
         "/debts",
         json={
+            "account_balance_id": account["id"],
             "name": "One-Time Fee",
             "debt_type": "other",
             "starting_balance": 300,
@@ -255,9 +599,11 @@ def test_other_debt_accepts_one_time_recurrence_and_blank_optional_fields():
 
 
 def test_recurring_other_debts_accept_zero_balance_and_project_payments():
+    account = create_account()
     monthly = client.post(
         "/debts",
         json={
+            "account_balance_id": account["id"],
             "name": "Monthly Zero Balance Obligation",
             "debt_type": "other",
             "starting_balance": 0,
@@ -271,6 +617,7 @@ def test_recurring_other_debts_accept_zero_balance_and_project_payments():
     weekly = client.post(
         "/debts",
         json={
+            "account_balance_id": account["id"],
             "name": "Weekly Zero Balance Obligation",
             "debt_type": "other",
             "starting_balance": 0,
@@ -284,6 +631,7 @@ def test_recurring_other_debts_accept_zero_balance_and_project_payments():
     first_fifteenth = client.post(
         "/debts",
         json={
+            "account_balance_id": account["id"],
             "name": "First Fifteenth Zero Balance Obligation",
             "debt_type": "other",
             "starting_balance": 0,
@@ -306,7 +654,7 @@ def test_recurring_other_debts_accept_zero_balance_and_project_payments():
             "months": 1,
             "income_source_ids": [],
             "debt_ids": [monthly.json()["id"], weekly.json()["id"], first_fifteenth.json()["id"]],
-            "account_balance_ids": [],
+            "account_balance_ids": [account["id"]],
         },
     )
 
@@ -357,9 +705,11 @@ def test_same_month_end_date_before_start_day_is_rejected_for_occurrence_model()
 
 
 def test_first_fifteenth_end_date_cutoff_uses_exact_occurrence_dates():
+    account = create_account()
     income = client.post(
         "/income-sources",
         json={
+            "account_balance_id": account["id"],
             "label": "First Fifteenth",
             "amount": 1000,
             "start_date": "2026-05-01",
@@ -382,16 +732,7 @@ def test_first_fifteenth_end_date_cutoff_uses_exact_occurrence_dates():
 
 
 def test_scenario_endpoint_preserves_baseline_values():
-    generated = client.post("/projections/baseline/generate", json={"start_month": "2026-01-01", "months": 3}).json()
-    saved = client.post(
-        "/projections",
-        json={
-            "title": "Baseline",
-            "projection_type": "baseline",
-            "assumptions_snapshot": generated["assumptions_snapshot"],
-            "generated_rows": generated["generated_rows"],
-        },
-    ).json()
+    saved, account, _income = create_saved_baseline_with_account()
 
     scenario = client.post(
         "/scenario/generate",
@@ -399,7 +740,7 @@ def test_scenario_endpoint_preserves_baseline_values():
             "baseline_projection_id": saved["id"],
             "scenario_start_month": "2026-02-01",
             "income_overrides": [
-                {"label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
+                {"account_balance_id": account["id"], "label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
             ],
         },
     )
@@ -410,23 +751,14 @@ def test_scenario_endpoint_preserves_baseline_values():
 
 
 def test_scenario_endpoint_can_use_baseline_timeline_without_explicit_dates():
-    generated = client.post("/projections/baseline/generate", json={"start_month": "2026-01-01", "months": 3}).json()
-    saved = client.post(
-        "/projections",
-        json={
-            "title": "Baseline",
-            "projection_type": "baseline",
-            "assumptions_snapshot": generated["assumptions_snapshot"],
-            "generated_rows": generated["generated_rows"],
-        },
-    ).json()
+    saved, account, _income = create_saved_baseline_with_account()
 
     scenario = client.post(
         "/scenario/generate",
         json={
             "baseline_projection_id": saved["id"],
             "income_overrides": [
-                {"label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
+                {"account_balance_id": account["id"], "label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
             ],
         },
     )
@@ -437,7 +769,8 @@ def test_scenario_endpoint_can_use_baseline_timeline_without_explicit_dates():
 
 
 def test_scenario_endpoint_recomputes_source_only_baseline_rows():
-    generated = client.post("/projections/baseline/generate", json={"start_month": "2026-01-01", "months": 3}).json()
+    saved_baseline, account, _income = create_saved_baseline_with_account(title="Generated Baseline")
+    generated = client.get(f"/projections/{saved_baseline['id']}").json()
     saved = client.post(
         "/projections",
         json={
@@ -453,7 +786,7 @@ def test_scenario_endpoint_recomputes_source_only_baseline_rows():
         json={
             "baseline_projection_id": saved["id"],
             "income_overrides": [
-                {"label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
+                {"account_balance_id": account["id"], "label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
             ],
         },
     )
@@ -471,11 +804,12 @@ def test_scenario_weekly_other_debt_aligns_with_baseline_without_debt_override()
     ).json()
     income = client.post(
         "/income-sources",
-        json={"label": "Scenario Salary", "amount": 1000, "start_date": "2026-05-01", "frequency": "monthly"},
+        json={"account_balance_id": balance["id"], "label": "Scenario Salary", "amount": 1000, "start_date": "2026-05-01", "frequency": "monthly"},
     ).json()
     debt = client.post(
         "/debts",
         json={
+            "account_balance_id": balance["id"],
             "name": "Weekly Scenario Obligation",
             "debt_type": "other",
             "starting_balance": 4000,
@@ -512,6 +846,7 @@ def test_scenario_weekly_other_debt_aligns_with_baseline_without_debt_override()
             "baseline_projection_id": saved["id"],
             "income_overrides": [
                 {
+                    "account_balance_id": balance["id"],
                     "label": "Scenario Salary",
                     "amount": 1200,
                     "start_date": "2026-05-01",
@@ -538,21 +873,12 @@ def test_scenario_weekly_other_debt_aligns_with_baseline_without_debt_override()
 
 
 def test_saving_scenario_with_same_title_overwrites_existing_projection():
-    generated = client.post("/projections/baseline/generate", json={"start_month": "2026-01-01", "months": 3}).json()
-    saved = client.post(
-        "/projections",
-        json={
-            "title": "Baseline",
-            "projection_type": "baseline",
-            "assumptions_snapshot": generated["assumptions_snapshot"],
-            "generated_rows": generated["generated_rows"],
-        },
-    ).json()
+    saved, account, _income = create_saved_baseline_with_account()
     payload = {
         "baseline_projection_id": saved["id"],
         "title": "Baseline Scenario",
         "income_overrides": [
-            {"label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
+            {"account_balance_id": account["id"], "label": "Salary", "amount": 6000, "start_date": "2026-01-01", "active": True}
         ],
     }
 

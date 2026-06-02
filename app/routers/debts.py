@@ -4,13 +4,16 @@ from sqlalchemy.orm import Session, selectinload
 from app.database import get_db
 from app.models import Debt
 from app.schemas import DebtCreate, DebtRead, DebtUpdate
+from app.services.account_integrity import merged_values, validate_debt_account_assignment
 
 router = APIRouter(prefix="/debts", tags=["Debts"])
 
 
 @router.post("", response_model=DebtRead)
 def create_debt(payload: DebtCreate, db: Session = Depends(get_db)):
-    debt = Debt(**payload.model_dump())
+    values = payload.model_dump()
+    validate_debt_account_assignment(db, values)
+    debt = Debt(**values)
     db.add(debt)
     db.commit()
     db.refresh(debt)
@@ -35,7 +38,9 @@ def update_debt(debt_id: int, payload: DebtUpdate, db: Session = Depends(get_db)
     debt = db.get(Debt, debt_id)
     if not debt:
         raise HTTPException(status_code=404, detail="Debt not found")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    validate_debt_account_assignment(db, merged_values(debt, updates), debt)
+    for key, value in updates.items():
         setattr(debt, key, value)
     if debt.payoff_target_date and debt.payoff_target_date < debt.start_date:
         raise HTTPException(status_code=422, detail="payoff_target_date cannot be before start_date")

@@ -171,7 +171,7 @@ export function toDebtPayload(form, defaults = {}) {
     planned_extra_payment: Math.max(rawActualPayment - minimumPayment, 0),
     recurrence,
     payment_due_day: null,
-    payment_date: form.paymentDate || null,
+    payment_date: isOtherDebt ? null : form.paymentDate || null,
     start_date: form.startDate || defaults.startDate,
     payoff_target_date: isOtherDebt && recurrence === 'one_time' ? null : form.payoffTargetDate || null,
     priority_number: isOtherDebt ? null : form.priorityNumber ? Number(form.priorityNumber) : null,
