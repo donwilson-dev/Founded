@@ -139,6 +139,8 @@ export default function BaselineBuilder({ isActive = false }) {
   const [loading, setLoading] = useState(false);
   const [debtDateError, setDebtDateError] = useState('');
   const [pendingDeleteProjectionId, setPendingDeleteProjectionId] = useState(null);
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+  const [pendingDeleteRateId, setPendingDeleteRateId] = useState(null);
   const accountBalanceFormRef = useRef(null);
   const incomeFormRef = useRef(null);
   const debtFormRef = useRef(null);
@@ -477,12 +479,12 @@ export default function BaselineBuilder({ isActive = false }) {
       setStatus(ACCOUNT_REFERENCE_MESSAGE);
       return;
     }
-    if (!window.confirm(`Delete account balance "${balance.name}"?`)) return;
     setLoading(true);
     try {
       await foundedApi.deleteAccountBalance(balance.id);
       setAccountBalances((items) => items.filter((item) => item.id !== balance.id));
       markWorkingBaselineChanged();
+      setPendingDeleteRow(null);
       setStatus('Account balance deleted.');
       await refreshSavedProjections();
     } catch (error) {
@@ -522,12 +524,12 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteIncome(source) {
-    if (!window.confirm(`Delete income source "${source.label}"?`)) return;
     setLoading(true);
     try {
       await foundedApi.deleteIncomeSource(source.id);
       setIncomeSources((items) => items.filter((item) => item.id !== source.id));
       markWorkingBaselineChanged();
+      setPendingDeleteRow(null);
       setStatus('Income source deleted.');
       await refreshSavedProjections();
     } catch (error) {
@@ -638,12 +640,12 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteDebt(debt) {
-    if (!window.confirm(`Delete debt "${debt.name}" and its interest schedule?`)) return;
     setLoading(true);
     try {
       await foundedApi.deleteDebt(debt.id);
       setDebts((items) => items.filter((item) => item.id !== debt.id));
       markWorkingBaselineChanged();
+      setPendingDeleteRow(null);
       setStatus('Debt deleted.');
       await refreshSavedProjections();
     } catch (error) {
@@ -654,7 +656,6 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteInterestRate(rate) {
-    if (!window.confirm(`Delete APR entry ${percent(rate.apr_percentage)}?`)) return;
     setLoading(true);
     try {
       await foundedApi.deleteInterestRate(rate.id);
@@ -663,6 +664,7 @@ export default function BaselineBuilder({ isActive = false }) {
         interest_rates: (debt.interest_rates || []).filter((item) => item.id !== rate.id),
       })));
       markWorkingBaselineChanged();
+      setPendingDeleteRateId(null);
       setStatus('Interest rate entry deleted.');
       await refreshSavedProjections();
     } catch (error) {
@@ -891,6 +893,10 @@ export default function BaselineBuilder({ isActive = false }) {
           columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Update', 'Status', 'Actions']}
           sectionId="account-balances"
           onReorder={reorderAccountBalances}
+          pendingDeleteRow={pendingDeleteRow}
+          onRequestDelete={setPendingDeleteRow}
+          onCancelDelete={() => setPendingDeleteRow(null)}
+          loading={loading}
           rows={accountBalances.map((item) => ({
             id: item.id,
             cells: [
@@ -940,6 +946,10 @@ export default function BaselineBuilder({ isActive = false }) {
           columns={['Name', 'Account', 'Start Date', 'Amount', 'Frequency', 'Status', 'Actions']}
           sectionId="income-sources"
           onReorder={reorderIncomeSources}
+          pendingDeleteRow={pendingDeleteRow}
+          onRequestDelete={setPendingDeleteRow}
+          onCancelDelete={() => setPendingDeleteRow(null)}
+          loading={loading}
           rows={incomeSources.map((item) => ({
             id: item.id,
             cells: [
@@ -1043,6 +1053,10 @@ export default function BaselineBuilder({ isActive = false }) {
           columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Update', 'Actions']}
           sectionId="debts"
           onReorder={reorderDebts}
+          pendingDeleteRow={pendingDeleteRow}
+          onRequestDelete={setPendingDeleteRow}
+          onCancelDelete={() => setPendingDeleteRow(null)}
+          loading={loading}
           rows={debts.map((item) => ({
             id: item.id,
             cells: [
@@ -1150,7 +1164,14 @@ export default function BaselineBuilder({ isActive = false }) {
               </label>
             </div>
             {editingDebt ? (
-              <InterestSchedule debt={editingDebt} onDeleteRate={deleteInterestRate} loading={loading} />
+              <InterestSchedule
+                debt={editingDebt}
+                onDeleteRate={deleteInterestRate}
+                pendingDeleteRateId={pendingDeleteRateId}
+                onRequestDeleteRate={setPendingDeleteRateId}
+                onCancelDeleteRate={() => setPendingDeleteRateId(null)}
+                loading={loading}
+              />
             ) : (
               <p className="form-note">
                 {isOtherDebt(debtForm)
@@ -1191,7 +1212,17 @@ export default function BaselineBuilder({ isActive = false }) {
   );
 }
 
-function CrudTable({ columns, rows, empty, onReorder, sectionId }) {
+function CrudTable({
+  columns,
+  rows,
+  empty,
+  onReorder,
+  sectionId,
+  pendingDeleteRow = null,
+  onRequestDelete,
+  onCancelDelete,
+  loading = false,
+}) {
   if (!rows.length) return <div className="mini-table-empty">{empty}</div>;
   const draggable = typeof onReorder === 'function' && rows.length > 1;
   const reorderType = 'application/x-founded-reorder';
@@ -1249,12 +1280,31 @@ function CrudTable({ columns, rows, empty, onReorder, sectionId }) {
               {row.cells.map((cell, index) => <td key={index} className={tableCellClass(columns[index])}>{cell}</td>)}
               <td className="actions-column">
                 <div className="row-actions">
-                  <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit row">
-                    <Edit3 size={15} />
-                  </button>
-                  <button type="button" className="icon-button table-action danger-action" onClick={row.onDelete} title="Delete" aria-label="Delete row">
-                    <Trash2 size={15} />
-                  </button>
+                  {isPendingDelete(pendingDeleteRow, sectionId, row.id) ? (
+                    <>
+                      <button type="button" className="mini-confirm-button" onClick={row.onDelete} disabled={loading}>
+                        Confirm
+                      </button>
+                      <button type="button" className="icon-button table-action" onClick={onCancelDelete} disabled={loading} aria-label="Cancel delete">
+                        x
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit row">
+                        <Edit3 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button table-action danger-action"
+                        onClick={() => onRequestDelete?.({ sectionId, id: row.id })}
+                        title="Delete"
+                        aria-label="Delete row"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </td>
             </tr>
@@ -1276,6 +1326,10 @@ function tableColumnClass(column) {
 function tableCellClass(column) {
   if (column === 'Update') return 'update-column update-column-cell';
   return undefined;
+}
+
+function isPendingDelete(pendingDeleteRow, sectionId, id) {
+  return pendingDeleteRow?.sectionId === sectionId && String(pendingDeleteRow?.id) === String(id);
 }
 
 function InlineAmountInput({ value, onCommit, disabled = false, ariaLabel }) {
@@ -1348,7 +1402,14 @@ function parseReorderPayload(value) {
   }
 }
 
-function InterestSchedule({ debt, onDeleteRate, loading }) {
+function InterestSchedule({
+  debt,
+  onDeleteRate,
+  pendingDeleteRateId,
+  onRequestDeleteRate,
+  onCancelDeleteRate,
+  loading,
+}) {
   const rates = debt.interest_rates || [];
   return (
     <div className="interest-schedule">
@@ -1360,9 +1421,27 @@ function InterestSchedule({ debt, onDeleteRate, loading }) {
         <div className="rate-row" key={rate.id}>
           <span>{percent(rate.apr_percentage)}</span>
           <span>{shortMonth(rate.start_date)} to {rate.end_date ? shortMonth(rate.end_date) : 'Indefinite'}</span>
-          <button type="button" className="icon-button table-action danger-action" onClick={() => onDeleteRate(rate)} disabled={loading} title="Delete APR entry">
-            <Trash2 size={14} />
-          </button>
+          {String(pendingDeleteRateId) === String(rate.id) ? (
+            <span className="rate-row-actions">
+              <button type="button" className="mini-confirm-button" onClick={() => onDeleteRate(rate)} disabled={loading}>
+                Confirm
+              </button>
+              <button type="button" className="icon-button table-action" onClick={onCancelDeleteRate} disabled={loading} aria-label="Cancel APR delete">
+                x
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="icon-button table-action danger-action"
+              onClick={() => onRequestDeleteRate(rate.id)}
+              disabled={loading}
+              title="Delete APR entry"
+              aria-label="Delete APR entry"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       )) : null}
       <p className="form-note">Editing APR fields updates the first APR entry. Add complex promo schedules in SEP 4.</p>

@@ -864,6 +864,13 @@ textarea {
   font-weight: 900;
 }
 
+.rate-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
 .form-row {
   display: flex;
   align-items: end;

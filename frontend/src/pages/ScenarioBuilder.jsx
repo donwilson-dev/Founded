@@ -67,6 +67,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingDeleteScenarioId, setPendingDeleteScenarioId] = useState(null);
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
   const [showDebtForm, setShowDebtForm] = useSessionState('founded.scenario.showDebtForm', false);
   const [showIncomeForm, setShowIncomeForm] = useSessionState('founded.scenario.showIncomeForm', false);
   const [editingDebtOverrideIndex, setEditingDebtOverrideIndex] = useState(null);
@@ -315,6 +316,7 @@ export default function ScenarioBuilder({ isActive = false }) {
 
   function deleteDebtOverride(index) {
     setDebtOverrides((items) => items.filter((_, itemIndex) => itemIndex !== index));
+    setPendingDeleteRow(null);
     if (editingDebtOverrideIndex === index) {
       setEditingDebtOverrideIndex(null);
       setDebtForm(debtTemplate);
@@ -379,6 +381,7 @@ export default function ScenarioBuilder({ isActive = false }) {
 
   function deleteIncomeOverride(index) {
     setIncomeOverrides((items) => items.filter((_, itemIndex) => itemIndex !== index));
+    setPendingDeleteRow(null);
     if (editingIncomeOverrideIndex === index) {
       setEditingIncomeOverrideIndex(null);
       setIncomeForm(incomeTemplate);
@@ -581,6 +584,10 @@ export default function ScenarioBuilder({ isActive = false }) {
           columns={['Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Update', 'Status', 'Actions']}
           sectionId="income-deviations"
           onReorder={reorderIncomeOverrides}
+          pendingDeleteRow={pendingDeleteRow}
+          onRequestDelete={setPendingDeleteRow}
+          onCancelDelete={() => setPendingDeleteRow(null)}
+          loading={loading}
           rows={incomeOverrides.map((item, index) => ({
             id: `${item.label}-${index}`,
             cells: [
@@ -682,6 +689,10 @@ export default function ScenarioBuilder({ isActive = false }) {
           columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Status', 'Update', 'Actions']}
           sectionId="debt-deviations"
           onReorder={reorderDebtOverrides}
+          pendingDeleteRow={pendingDeleteRow}
+          onRequestDelete={setPendingDeleteRow}
+          onCancelDelete={() => setPendingDeleteRow(null)}
+          loading={loading}
           rows={debtOverrides.map((item, index) => ({
             id: item.debt.id || index,
             cells: [
@@ -833,7 +844,17 @@ export default function ScenarioBuilder({ isActive = false }) {
   );
 }
 
-function DeviationTable({ columns, rows, emptyText, onReorder, sectionId }) {
+function DeviationTable({
+  columns,
+  rows,
+  emptyText,
+  onReorder,
+  sectionId,
+  pendingDeleteRow = null,
+  onRequestDelete,
+  onCancelDelete,
+  loading = false,
+}) {
   if (!rows.length) return <p className="helper-text">{emptyText}</p>;
   const draggable = typeof onReorder === 'function' && rows.length > 1;
   const reorderType = 'application/x-founded-reorder';
@@ -891,12 +912,31 @@ function DeviationTable({ columns, rows, emptyText, onReorder, sectionId }) {
               {row.cells.map((cell, index) => <td key={index} className={tableCellClass(columns[index])}>{cell}</td>)}
               <td className="actions-column">
                 <div className="row-actions">
-                  <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit deviation">
-                    <Edit3 size={15} />
-                  </button>
-                  <button type="button" className="icon-button table-action danger-action" onClick={row.onDelete} title="Delete" aria-label="Delete deviation">
-                    <Trash2 size={15} />
-                  </button>
+                  {isPendingDelete(pendingDeleteRow, sectionId, row.id) ? (
+                    <>
+                      <button type="button" className="mini-confirm-button" onClick={row.onDelete} disabled={loading}>
+                        Confirm
+                      </button>
+                      <button type="button" className="icon-button table-action" onClick={onCancelDelete} disabled={loading} aria-label="Cancel delete">
+                        x
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit deviation">
+                        <Edit3 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button table-action danger-action"
+                        onClick={() => onRequestDelete?.({ sectionId, id: row.id })}
+                        title="Delete"
+                        aria-label="Delete deviation"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </td>
             </tr>
@@ -918,6 +958,10 @@ function tableColumnClass(column) {
 function tableCellClass(column) {
   if (column === 'Update') return 'update-column update-column-cell';
   return undefined;
+}
+
+function isPendingDelete(pendingDeleteRow, sectionId, id) {
+  return pendingDeleteRow?.sectionId === sectionId && String(pendingDeleteRow?.id) === String(id);
 }
 
 function InlineAmountInput({ value, onCommit, disabled = false, ariaLabel }) {
