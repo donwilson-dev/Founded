@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, GitCompare, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
+import { GitCompare, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
@@ -8,8 +8,11 @@ import {
   toPromoRatePayload,
   toRegularRatePayload,
 } from '../api/foundedApi.js';
+import ConfirmingActions from '../components/ConfirmingActions.jsx';
 import EmptyState from '../components/EmptyState.jsx';
+import InlineAmountInput, { parseInlineAmount } from '../components/InlineAmountInput.jsx';
 import ProjectionTable from '../components/ProjectionTable.jsx';
+import { accountDisplayName } from '../utils/accountLabels.js';
 import { currencyPrecise, labelize, percent, shortMonth } from '../utils/formatters.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
@@ -911,33 +914,16 @@ function DeviationTable({
               ) : null}
               {row.cells.map((cell, index) => <td key={index} className={tableCellClass(columns[index])}>{cell}</td>)}
               <td className="actions-column">
-                <div className="row-actions">
-                  {isPendingDelete(pendingDeleteRow, sectionId, row.id) ? (
-                    <>
-                      <button type="button" className="mini-confirm-button" onClick={row.onDelete} disabled={loading}>
-                        Confirm
-                      </button>
-                      <button type="button" className="icon-button table-action" onClick={onCancelDelete} disabled={loading} aria-label="Cancel delete">
-                        x
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit deviation">
-                        <Edit3 size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-button table-action danger-action"
-                        onClick={() => onRequestDelete?.({ sectionId, id: row.id })}
-                        title="Delete"
-                        aria-label="Delete deviation"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </>
-                  )}
-                </div>
+                <ConfirmingActions
+                  confirming={isPendingDelete(pendingDeleteRow, sectionId, row.id)}
+                  loading={loading}
+                  onConfirm={row.onDelete}
+                  onCancel={onCancelDelete}
+                  onEdit={row.onEdit}
+                  onRequestDelete={() => onRequestDelete?.({ sectionId, id: row.id })}
+                  editLabel="Edit deviation"
+                  deleteLabel="Delete deviation"
+                />
               </td>
             </tr>
           ))}
@@ -962,58 +948,6 @@ function tableCellClass(column) {
 
 function isPendingDelete(pendingDeleteRow, sectionId, id) {
   return pendingDeleteRow?.sectionId === sectionId && String(pendingDeleteRow?.id) === String(id);
-}
-
-function InlineAmountInput({ value, onCommit, disabled = false, ariaLabel }) {
-  const [draft, setDraft] = useState('');
-
-  function commit() {
-    if (draft.trim() === '') return;
-    const parsed = parseInlineAmount(draft);
-    if (parsed === null) {
-      setDraft('');
-      return;
-    }
-    onCommit(draft);
-    setDraft('');
-  }
-
-  return (
-    <input
-      className="inline-update-input update-amount-input text-center"
-      type="number"
-      min="0"
-      step="0.01"
-      inputMode="decimal"
-      placeholder="$0.00"
-      value={draft}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      onChange={(event) => {
-        const nextValue = event.target.value;
-        if (/^\d*(?:\.\d{0,2})?$/.test(nextValue)) setDraft(nextValue);
-      }}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          commit();
-          event.currentTarget.blur();
-        }
-        if (event.key === 'Escape') {
-          setDraft('');
-          event.currentTarget.blur();
-        }
-      }}
-    />
-  );
-}
-
-function parseInlineAmount(value) {
-  const text = String(value ?? '').trim();
-  if (!text || !/^\d+(?:\.\d{0,2})?$/.test(text)) return null;
-  const amount = Number(text);
-  return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
 function reorderItems(items, fromIndex, toIndex) {
@@ -1059,17 +993,6 @@ function defaultScenarioTitle(baseline) {
 
 function isOneTimeIncome(form) {
   return form.frequency === 'one_time';
-}
-
-function accountDisplayName(account) {
-  if (!account) return '-';
-  const bank = account.name || 'Account';
-  const accountType = String(account.account_type || account.accountType || '').trim();
-  const owner = String(account.owner || '').trim();
-  if (accountType && owner) return `${bank} - ${accountType} (${owner})`;
-  if (accountType) return `${bank} - ${accountType}`;
-  if (owner) return `${bank} (${owner})`;
-  return bank;
 }
 
 function isOtherDebt(formOrDebt) {
