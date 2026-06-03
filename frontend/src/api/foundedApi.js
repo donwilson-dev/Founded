@@ -180,17 +180,6 @@ export function toDebtPayload(form, defaults = {}) {
   };
 }
 
-export function toRatePayload(form, debtId) {
-  if (form.aprPercentage === '' || form.aprPercentage === null || form.aprPercentage === undefined) return null;
-  return {
-    debt_id: Number(debtId),
-    apr_percentage: Number(form.aprPercentage || 0),
-    start_date: form.rateStartDate || form.startDate,
-    end_date: form.rateEndDate || null,
-    notes: form.rateNotes || null,
-  };
-}
-
 export function toRegularRatePayload(form, debtId) {
   if (form.debtType === 'other') return null;
   if (form.aprPercentage === '' || form.aprPercentage === null || form.aprPercentage === undefined) return null;

@@ -29,11 +29,6 @@ export function shortMonth(value) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date);
 }
 
-export function isoMonth(value) {
-  if (!value) return '';
-  return String(value).slice(0, 7);
-}
-
 export function percent(value) {
   return `${Number(value || 0).toFixed(2)}%`;
 }
