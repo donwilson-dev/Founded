@@ -446,6 +446,32 @@ export default function BaselineBuilder({ isActive = false }) {
     }
   }
 
+  async function inlineUpdateAccountBalanceAmount(balance, value) {
+    const amount = parseInlineAmount(value);
+    if (amount === null) return;
+    if (amount === Number(balance.amount || 0)) return;
+    setLoading(true);
+    try {
+      const updated = await foundedApi.updateAccountBalance(balance.id, toAccountBalancePayload({
+        name: balance.name || '',
+        owner: balance.owner || '',
+        accountType: balance.account_type || balance.accountType || '',
+        amount,
+        date: balance.date || todayDate(),
+        notes: balance.notes || '',
+        active: balance.active !== false,
+      }));
+      setAccountBalances((items) => items.map((item) => (item.id === updated.id ? updated : item)));
+      markWorkingBaselineChanged();
+      setStatus('Account balance updated.');
+      await refreshSavedProjections();
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function deleteAccountBalance(balance) {
     if (accountIsReferenced(balance.id)) {
       setStatus(ACCOUNT_REFERENCE_MESSAGE);
@@ -563,6 +589,46 @@ export default function BaselineBuilder({ isActive = false }) {
       setDebtDateError('');
 
       cancelDebtForm();
+      await refreshSavedProjections();
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function inlineUpdateDebtBalance(debt, value) {
+    const currentBalance = parseInlineAmount(value);
+    if (currentBalance === null) return;
+    const otherDebt = debt.debt_type === 'other';
+    const existingValue = otherDebt
+      ? Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0)
+      : Number(debt.current_balance || 0);
+    if (currentBalance === existingValue) return;
+    setLoading(true);
+    try {
+      const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
+      await foundedApi.updateDebt(debt.id, toDebtPayload({
+        name: debt.name || '',
+        accountBalanceId: debt.account_balance_id ?? debt.accountBalanceId ?? '',
+        debtType: debt.debt_type || 'credit_card',
+        startingBalance: currentBalance,
+        currentBalance: otherDebt ? debt.current_balance || 0 : currentBalance,
+        minimumMonthlyPayment: otherDebt ? currentBalance : debt.minimum_monthly_payment ?? 0,
+        actualPayment: otherDebt ? currentBalance : actualPayment,
+        plannedExtraPayment: debt.planned_extra_payment ?? 0,
+        paymentDate: debt.payment_date || debt.paymentDate || '',
+        startDate: debt.start_date || currentMonthStart(),
+        payoffTargetDate: debt.payoff_target_date || '',
+        priorityNumber: debt.priority_number ?? '',
+        recurrence: debt.recurrence || 'monthly',
+        notes: debt.notes || '',
+        active: debt.active !== false,
+      }));
+      const updated = await foundedApi.getDebt(debt.id);
+      setDebts((items) => items.map((item) => (item.id === updated.id ? updated : item)));
+      markWorkingBaselineChanged();
+      setStatus('Debt balance updated.');
       await refreshSavedProjections();
     } catch (error) {
       setStatus(error.message);
@@ -822,7 +888,7 @@ export default function BaselineBuilder({ isActive = false }) {
         </div>
         <div className="subsection-title" data-baseline-section="account-balances">Account Balances</div>
         <CrudTable
-          columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Status', 'Actions']}
+          columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Update', 'Status', 'Actions']}
           sectionId="account-balances"
           onReorder={reorderAccountBalances}
           rows={accountBalances.map((item) => ({
@@ -833,6 +899,13 @@ export default function BaselineBuilder({ isActive = false }) {
               item.owner || '-',
               shortMonth(item.date),
               currencyPrecise(item.amount),
+              <InlineAmountInput
+                key={`balance-update-${item.id}`}
+                ariaLabel={`Update ${item.name || 'account'} amount`}
+                value={item.amount}
+                disabled={loading}
+                onCommit={(value) => inlineUpdateAccountBalanceAmount(item, value)}
+              />,
               item.active ? 'Active' : 'Inactive',
             ],
             onEdit: () => startEditAccountBalance(item),
@@ -967,7 +1040,7 @@ export default function BaselineBuilder({ isActive = false }) {
           </button>
         </div>
         <CrudTable
-          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Actions']}
+          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Update', 'Actions']}
           sectionId="debts"
           onReorder={reorderDebts}
           rows={debts.map((item) => ({
@@ -979,6 +1052,13 @@ export default function BaselineBuilder({ isActive = false }) {
               currencyPrecise(item.minimum_monthly_payment),
               currencyPrecise(Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0)),
               debtAprLabel(item),
+              <InlineAmountInput
+                key={`debt-update-${item.id}`}
+                ariaLabel={`Update ${item.name || 'debt'} balance`}
+                value={item.debt_type === 'other' ? Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0) : item.current_balance}
+                disabled={loading}
+                onCommit={(value) => inlineUpdateDebtBalance(item, value)}
+              />,
             ],
             onEdit: () => startEditDebt(item),
             onDelete: () => deleteDebt(item),
@@ -1121,7 +1201,7 @@ function CrudTable({ columns, rows, empty, onReorder, sectionId }) {
         <thead>
           <tr>
             {draggable ? <th className="drag-column" aria-label="Reorder rows" /> : null}
-            {columns.map((column) => <th key={column} className={column === 'Actions' ? 'actions-column' : undefined}>{column}</th>)}
+            {columns.map((column) => <th key={column} className={tableColumnClass(column)}>{column}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -1166,7 +1246,7 @@ function CrudTable({ columns, rows, empty, onReorder, sectionId }) {
                   </span>
                 </td>
               ) : null}
-              {row.cells.map((cell, index) => <td key={index}>{cell}</td>)}
+              {row.cells.map((cell, index) => <td key={index} className={tableCellClass(columns[index])}>{cell}</td>)}
               <td className="actions-column">
                 <div className="row-actions">
                   <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit row">
@@ -1186,6 +1266,69 @@ function CrudTable({ columns, rows, empty, onReorder, sectionId }) {
 }
 
 let activeBaselineDrag = null;
+
+function tableColumnClass(column) {
+  if (column === 'Actions') return 'actions-column';
+  if (column === 'Update') return 'update-column update-column-header';
+  return undefined;
+}
+
+function tableCellClass(column) {
+  if (column === 'Update') return 'update-column update-column-cell';
+  return undefined;
+}
+
+function InlineAmountInput({ value, onCommit, disabled = false, ariaLabel }) {
+  const [draft, setDraft] = useState('');
+
+  function commit() {
+    if (draft.trim() === '') return;
+    const parsed = parseInlineAmount(draft);
+    if (parsed === null) {
+      setDraft('');
+      return;
+    }
+    onCommit(draft);
+    setDraft('');
+  }
+
+  return (
+    <input
+      className="inline-update-input update-amount-input text-center"
+      type="number"
+      min="0"
+      step="0.01"
+      inputMode="decimal"
+      placeholder="$0.00"
+      value={draft}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        if (/^\d*(?:\.\d{0,2})?$/.test(nextValue)) setDraft(nextValue);
+      }}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+          event.currentTarget.blur();
+        }
+        if (event.key === 'Escape') {
+          setDraft('');
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function parseInlineAmount(value) {
+  const text = String(value ?? '').trim();
+  if (!text || !/^\d+(?:\.\d{0,2})?$/.test(text)) return null;
+  const amount = Number(text);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
 
 function reorderItems(items, fromIndex, toIndex) {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {

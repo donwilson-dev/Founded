@@ -325,6 +325,39 @@ export default function ScenarioBuilder({ isActive = false }) {
     setScenario(null);
   }
 
+  function inlineUpdateIncomeOverrideAmount(index, value) {
+    const amount = parseInlineAmount(value);
+    if (amount === null) return;
+    setIncomeOverrides((items) => items.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, amount } : item
+    )));
+    setScenario(null);
+    setStatus('Income deviation amount updated.');
+  }
+
+  function inlineUpdateDebtOverrideAmount(index, value) {
+    const amount = parseInlineAmount(value);
+    if (amount === null) return;
+    setDebtOverrides((items) => items.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const otherDebt = item.debt?.debt_type === 'other';
+      const nextDebt = otherDebt
+        ? {
+          ...item.debt,
+          minimum_monthly_payment: amount,
+          planned_extra_payment: 0,
+        }
+        : {
+          ...item.debt,
+          current_balance: amount,
+          starting_balance: amount,
+        };
+      return { ...item, debt: nextDebt };
+    }));
+    setScenario(null);
+    setStatus('Debt deviation amount updated.');
+  }
+
   function startEditIncomeOverride(item, index) {
     setEditingIncomeOverrideIndex(index);
     setIncomeForm({
@@ -545,7 +578,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           </button>
         </div>
         <DeviationTable
-          columns={['Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Status', 'Actions']}
+          columns={['Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Update', 'Status', 'Actions']}
           sectionId="income-deviations"
           onReorder={reorderIncomeOverrides}
           rows={incomeOverrides.map((item, index) => ({
@@ -556,6 +589,12 @@ export default function ScenarioBuilder({ isActive = false }) {
               labelize(item.frequency || 'monthly'),
               shortMonth(item.start_date),
               item.end_date ? shortMonth(item.end_date) : '-',
+              <InlineAmountInput
+                key={`income-override-update-${index}`}
+                ariaLabel={`Update ${item.label || 'income deviation'} amount`}
+                value={item.amount}
+                onCommit={(value) => inlineUpdateIncomeOverrideAmount(index, value)}
+              />,
               item.active === false ? 'Inactive' : 'Active',
             ],
             onEdit: () => startEditIncomeOverride(item, index),
@@ -640,7 +679,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           </button>
         </div>
         <DeviationTable
-          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Status', 'Actions']}
+          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Status', 'Update', 'Actions']}
           sectionId="debt-deviations"
           onReorder={reorderDebtOverrides}
           rows={debtOverrides.map((item, index) => ({
@@ -653,6 +692,12 @@ export default function ScenarioBuilder({ isActive = false }) {
               currencyPrecise(Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0)),
               item.debt.debt_type === 'other' ? labelize(item.debt.recurrence || 'monthly') : primaryApr(item),
               item.debt.active === false ? 'Inactive' : 'Active',
+              <InlineAmountInput
+                key={`debt-override-update-${index}`}
+                ariaLabel={`Update ${item.debt.name || 'debt deviation'} amount`}
+                value={item.debt.debt_type === 'other' ? Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0) : item.debt.current_balance}
+                onCommit={(value) => inlineUpdateDebtOverrideAmount(index, value)}
+              />,
             ],
             onEdit: () => startEditDebtOverride(item, index),
             onDelete: () => deleteDebtOverride(index),
@@ -798,7 +843,7 @@ function DeviationTable({ columns, rows, emptyText, onReorder, sectionId }) {
         <thead>
           <tr>
             {draggable ? <th className="drag-column" aria-label="Reorder rows" /> : null}
-            {columns.map((column) => <th key={column} className={column === 'Actions' ? 'actions-column' : undefined}>{column}</th>)}
+            {columns.map((column) => <th key={column} className={tableColumnClass(column)}>{column}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -843,7 +888,7 @@ function DeviationTable({ columns, rows, emptyText, onReorder, sectionId }) {
                   </span>
                 </td>
               ) : null}
-              {row.cells.map((cell, index) => <td key={index}>{cell}</td>)}
+              {row.cells.map((cell, index) => <td key={index} className={tableCellClass(columns[index])}>{cell}</td>)}
               <td className="actions-column">
                 <div className="row-actions">
                   <button type="button" className="icon-button table-action" onClick={row.onEdit} title="Edit" aria-label="Edit deviation">
@@ -863,6 +908,69 @@ function DeviationTable({ columns, rows, emptyText, onReorder, sectionId }) {
 }
 
 let activeScenarioDrag = null;
+
+function tableColumnClass(column) {
+  if (column === 'Actions') return 'actions-column';
+  if (column === 'Update') return 'update-column update-column-header';
+  return undefined;
+}
+
+function tableCellClass(column) {
+  if (column === 'Update') return 'update-column update-column-cell';
+  return undefined;
+}
+
+function InlineAmountInput({ value, onCommit, disabled = false, ariaLabel }) {
+  const [draft, setDraft] = useState('');
+
+  function commit() {
+    if (draft.trim() === '') return;
+    const parsed = parseInlineAmount(draft);
+    if (parsed === null) {
+      setDraft('');
+      return;
+    }
+    onCommit(draft);
+    setDraft('');
+  }
+
+  return (
+    <input
+      className="inline-update-input update-amount-input text-center"
+      type="number"
+      min="0"
+      step="0.01"
+      inputMode="decimal"
+      placeholder="$0.00"
+      value={draft}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        if (/^\d*(?:\.\d{0,2})?$/.test(nextValue)) setDraft(nextValue);
+      }}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+          event.currentTarget.blur();
+        }
+        if (event.key === 'Escape') {
+          setDraft('');
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+function parseInlineAmount(value) {
+  const text = String(value ?? '').trim();
+  if (!text || !/^\d+(?:\.\d{0,2})?$/.test(text)) return null;
+  const amount = Number(text);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
 
 function reorderItems(items, fromIndex, toIndex) {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) {

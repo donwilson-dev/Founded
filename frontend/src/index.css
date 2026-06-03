@@ -301,7 +301,7 @@ button {
 .scenario-grid,
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1.1fr 0.88fr;
+  grid-template-columns: 1.28fr 1.18fr 0.68fr;
   gap: 16px;
 }
 
@@ -372,6 +372,71 @@ button {
 .mini-table td.actions-column {
   width: 82px;
   text-align: center !important;
+}
+
+.mini-table th.update-column,
+.mini-table td.update-column {
+  width: 112px;
+  text-align: center !important;
+}
+
+.mini-table th.update-column-header,
+.mini-table td.update-column-cell {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.mini-table td.update-column-cell {
+  vertical-align: middle;
+}
+
+.inline-update-input {
+  display: block;
+  width: 96px;
+  min-height: 34px;
+  border: 1px solid #d9e4f5;
+  border-radius: 7px;
+  padding: 6px 10px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--navy);
+  background: #fff;
+  text-align: center;
+}
+
+.inline-update-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+  text-align: center;
+}
+
+.inline-update-input.text-center,
+.update-amount-input {
+  text-align: center;
+}
+
+.inline-update-input::-webkit-outer-spin-button,
+.inline-update-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.inline-update-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.inline-update-input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.18);
+  border-color: var(--blue);
+}
+
+.inline-update-input:disabled {
+  background: #f5f7fb;
+  color: var(--muted);
 }
 
 .actions-column .row-actions {
