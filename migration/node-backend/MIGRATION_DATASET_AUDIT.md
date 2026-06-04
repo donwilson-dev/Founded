@@ -190,6 +190,118 @@ Current Phase 5 behavior:
 - Verify reports expected counts when MongoDB is not configured and performs count/relationship checks when MongoDB is configured.
 - Import is explicitly deferred and performs no writes.
 
+## Phase 8 Pre-Import Attempt
+
+Audit timestamp: 2026-06-04 13:32:41 -07:00
+
+Phase 8 objective was to import Dataset Version 1.0 into a non-authoritative MongoDB validation environment and verify counts, relationships, retrieval routes, and idempotency.
+
+### Pre-Import Environment
+
+| Item | Result |
+| --- | --- |
+| Dataset Version | 1.0 |
+| Git branch | `main` |
+| Target database name | Not available; `MONGODB_URI` is not configured. |
+| Connection string source | `MONGODB_URI` from process environment or `.env`; no value found. |
+| Environment | `development` default; no `.env` file present in `migration/node-backend`. |
+| Node version | v24.14.0 |
+| Mongoose version | 9.6.3 |
+| MongoDB version | Not available; MongoDB connection was not configured or reachable. |
+| Local MongoDB listener | `127.0.0.1:27017` connection failed. |
+| MongoDB CLI/service availability | `mongod`, `mongosh`, and Windows MongoDB service were not found. |
+
+### Prerequisite Results
+
+| Prerequisite | Result | Notes |
+| --- | --- | --- |
+| `MIGRATION_DATASET_AUDIT.md` exists | Pass | This audit document is present. |
+| Dataset Version 1.0 exists | Pass | `scripts/datasetV1.js` exports `DATASET_VERSION = "1.0"`. |
+| Dataset counts match audit | Pass | Expected counts: `accountBalances=4`, `incomeSources=5`, `debts=8`, `interestRates=5`, `savedProjections=4`, `scenarios=3`. |
+| Relationship counts match audit | Pass | Expected relationships: income account refs 4, transfer account refs 2, debt account refs 8, interest-rate debt refs 5, scenario baseline refs 3. |
+| `npm run dataset:preview` | Pass | Preview printed Dataset Version 1.0 expected counts and relationship counts. |
+| `npm run dataset:verify` | Deferred | Returned `status: not-configured` because `MONGODB_URI` is not configured. |
+| MongoDB connection succeeds | Fail | Required Phase 8 import precondition was not met. |
+
+### Import Decision
+
+Import was not attempted.
+
+Reason:
+
+- Phase 8 requires a successful MongoDB connection before import.
+- `MONGODB_URI` was not configured.
+- No local MongoDB listener or MongoDB CLI/service was available.
+
+No MongoDB writes were performed. No collections were created, deleted, dropped, reset, patched, or manually edited.
+
+### Collection Count Verification
+
+Live collection counts were not available because MongoDB was not configured.
+
+| Collection | Expected Count | Actual Count | Result |
+| --- | ---: | ---: | --- |
+| `accountBalances` | 4 | Not available | Deferred |
+| `incomeSources` | 5 | Not available | Deferred |
+| `debts` | 8 | Not available | Deferred |
+| `interestRates` | 5 | Not available | Deferred |
+| `savedProjections` | 4 | Not available | Deferred |
+| Scenario documents in `savedProjections` | 3 | Not available | Deferred |
+
+### Relationship Verification
+
+Live relationship verification was not available because MongoDB was not configured.
+
+| Relationship | Expected Count | Actual Count | Result |
+| --- | ---: | ---: | --- |
+| Income account references | 4 | Not available | Deferred |
+| Transfer account references | 2 | Not available | Deferred |
+| Debt account references | 8 | Not available | Deferred |
+| Debt to interest-rate references | 5 | Not available | Deferred |
+| Scenario to baseline saved-projection references | 3 | Not available | Deferred |
+
+### Retrieval Verification
+
+State C retrieval verification was not available because Dataset Version 1.0 was not imported.
+
+Expected routes for future Phase 8 retry:
+
+- `GET /account-balances`
+- `GET /income-sources`
+- `GET /debts`
+- `GET /interest-rates/debt/:debtId`
+- `GET /scenarios`
+- `GET /projections`
+
+### Idempotency Verification
+
+Idempotency verification was not performed because import was blocked before any write operation.
+
+Required future retry sequence:
+
+1. Import Dataset Version 1.0.
+2. Verify exact counts and relationships.
+3. Delete imported Dataset Version 1.0 collections only.
+4. Re-import Dataset Version 1.0.
+5. Verify exact counts and relationships again.
+
+### Failure Record
+
+Failure reason:
+
+- MongoDB connection prerequisite failed because no connection string was configured and no local MongoDB instance was reachable.
+
+Collection state:
+
+- Unknown/not available; no connection was established.
+
+Recommended remediation:
+
+1. Configure a non-authoritative MongoDB validation database.
+2. Set `MONGODB_URI` for `migration/node-backend`.
+3. Restart the Express migration backend and confirm `/health` reports `database: "connected"`.
+4. Re-run Phase 8 from pre-import verification.
+
 ## Verification Procedure
 
 Required checks:
