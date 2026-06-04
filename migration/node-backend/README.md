@@ -2,9 +2,9 @@
 
 ## Current Migration Phase
 
-Phase 1: Express Backend Skeleton.
+Phase 2: MongoDB Models and Connection Setup.
 
-This workspace contains only the experimental Node.js / Express infrastructure layer for the Founded migration. It does not contain migrated business logic, projection logic, calculation logic, database models, authentication, exports, reports, or frontend rewiring.
+This workspace contains only the experimental Node.js / Express infrastructure layer for the Founded migration. It does not contain migrated business logic, projection logic, calculation logic, authentication, exports, reports, or frontend rewiring.
 
 ## Current Source of Truth
 
@@ -19,10 +19,14 @@ The Express backend in this folder is experimental migration infrastructure only
 - Phase 1: centralized CORS configuration for the current Vite origins.
 - Phase 1: health route at `GET /health`.
 - Phase 1: safe environment placeholder file.
+- Phase 2: Mongoose dependency installed.
+- Phase 2: optional MongoDB connection helper.
+- Phase 2: safe database status reporting in `GET /health`.
+- Phase 2: initial schema-only Mongoose models.
+- Phase 2: model mapping documentation.
 
 ## Remaining Phases
 
-- Phase 2: MongoDB model and connection planning/execution, after approval.
 - Phase 3: route migration.
 - Phase 4: direct JavaScript calculation engine port.
 - Phase 5: projection engine port.
@@ -65,9 +69,62 @@ Expected response:
 {
   "status": "ok",
   "service": "founded-node-backend",
-  "phase": "phase-1-skeleton"
+  "phase": "phase-2-mongodb",
+  "database": "not-configured"
 }
 ```
+
+If `MONGODB_URI` is configured and reachable, `database` reports `connected`. If `MONGODB_URI` is blank, the server still starts and reports `not-configured`. Connection strings and credentials are never returned by the health route.
+
+## MongoDB Integration Status
+
+MongoDB support is infrastructure-only in this phase.
+
+What exists:
+
+- `mongoose` is installed as the single MongoDB data-access strategy.
+- `src/config/database.js` provides optional connect/disconnect helpers.
+- `GET /health` reports safe database status.
+- `src/models/` contains initial Mongoose schema definitions.
+
+What does not exist:
+
+- No migrated CRUD routes.
+- No controllers.
+- No business services.
+- No calculation logic.
+- No projection logic.
+- No demo data migration.
+- No MongoDB seed process.
+- No frontend rewiring.
+
+The models are schema definitions only. They are not connected to routes, they do not contain business logic, and they do not contain calculation logic.
+
+## Model Mapping
+
+The model mapping follows `docs/node-express-mongodb-migration-plan.md` and favors parity with the current FastAPI + SQLite concepts.
+
+| Collection | Source SQLite / FastAPI Entity | Mongoose Model | Relationship Approach | Parity Notes |
+| --- | --- | --- | --- | --- |
+| `accountBalances` | `AccountBalance` / `account_balances` | `Account` | Referenced by income, transfer, and debt records. | Keeps account owner/type fields and `legacyId` for validation mapping. |
+| `incomeSources` | `IncomeSource` / `income_sources` | `Income` | References account, from account, and to account by ObjectId, with legacy id fields for parity validation. | Account transfers remain income-source records with `is_account_transfer`. |
+| `debts` | `Debt` / `debts` | `Debt` | References account by ObjectId, with legacy id field for parity validation. Interest rates remain separate for first-pass API parity. | Preserves debt type, recurrence, payment, balance, priority, due-day, and active fields. |
+| `interestRates` | `InterestRate` / `interest_rates` | `InterestRate` | References a debt by ObjectId, with `legacy_debt_id` for validation mapping. | Separate collection is intentionally used first for route-contract parity. |
+| `savedProjections` | `SavedProjection` / `saved_projections` | `SavedProjection` | Stores generated rows and assumption snapshots in the document. | Preserves baseline/scenario projection type and overwrite-by-title index shape. |
+| `savedProjections` | Scenario projections saved through `SavedProjection` | `Scenario` | Uses the same collection as saved projections. | Scenario is a schema-only convenience model for scenario documents; no separate scenario collection is introduced. |
+
+Known migration risks:
+
+- MongoDB ObjectIds may not be drop-in replacements for current numeric ids. API adapters should expose compatible `id` values during route migration.
+- Saved projections can become large documents because they contain generated rows and snapshots. This is acceptable for current 60-300 month ranges, but BSON size should be monitored in later phases.
+- Interest rates are intentionally a separate collection for first-pass route parity. Embedding can be reassessed only after migration validation.
+- Scenario documents remain saved projections to preserve current application behavior.
+
+Parity notes:
+
+- Date fields are modeled as API-boundary strings so existing `YYYY-MM-DD` semantics can be preserved during route migration.
+- `legacyId` and related legacy foreign-key fields exist only to support migration validation. They are not active application behavior.
+- Unique saved projection indexing mirrors overwrite-by-title-and-type behavior conceptually, but no save route uses it yet.
 
 ## Folder Structure
 
@@ -81,9 +138,18 @@ migration/node-backend/
     app.js
     config/
       cors.js
+      database.js
       env.js
     middleware/
       requestLogger.js
+    models/
+      Account.js
+      Debt.js
+      Income.js
+      InterestRate.js
+      SavedProjection.js
+      Scenario.js
+      index.js
     routes/
       health.js
 ```
@@ -103,8 +169,7 @@ CORS origins may be expanded later during frontend rewire or deployment work. Th
 
 ## Current Limitations
 
-- No MongoDB connection.
-- No Mongoose or database tooling.
+- MongoDB connection is optional and infrastructure-only.
 - No migrated FastAPI routes beyond health.
 - No calculation engine port.
 - No projection engine port.
