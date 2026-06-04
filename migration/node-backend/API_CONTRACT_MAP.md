@@ -149,3 +149,21 @@ Differences and deferred items:
 - No POST, PATCH, PUT, or DELETE routes are defined for these groups.
 - Projections, scenarios, and dashboard remain deferred scaffold route groups.
 - No calculations, projection generation, scenario generation, dashboard aggregation, demo data migration, or frontend rewiring exists in Phase 4.
+
+## Dataset Readiness
+
+Dataset Version 1.0 is documented in `MIGRATION_DATASET_AUDIT.md`.
+
+Dataset readiness status:
+
+- Canonical dataset: documented.
+- Expected counts: documented.
+- Collection mappings: documented.
+- Relationship verification rules: documented.
+- Preview tooling: available.
+- Verification tooling: available.
+- MongoDB import: deferred.
+- Data parity: not claimed.
+- Financial validation: not performed.
+
+This section documents dataset readiness only. It does not change API parity levels, route migration status, data parity status, or validation status.

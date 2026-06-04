@@ -215,6 +215,26 @@ No POST, PUT, PATCH, or DELETE routes are implemented for these groups. Projecti
 
 Data parity is not claimed in Phase 4 because MongoDB seed/import work has not happened.
 
+## Migration Dataset Framework
+
+Phase 5 establishes Dataset Version 1.0 as the canonical MongoDB migration dataset definition. The dataset audit lives in `MIGRATION_DATASET_AUDIT.md`.
+
+Dataset tooling:
+
+```powershell
+npm run dataset:preview
+npm run dataset:verify
+npm run dataset:import
+```
+
+Current behavior:
+
+- `dataset:preview` prints Dataset Version 1.0 counts, target collections, relationship counts, and validation anchors.
+- `dataset:verify` checks MongoDB counts and relationships when `MONGODB_URI` is configured. Without MongoDB, it reports verification as deferred.
+- `dataset:import` is intentionally deferred and performs no writes in Phase 5.
+
+The canonical dataset is based on the approved synthetic demo dataset and migration reference values, not on mutable local SQLite contents.
+
 ## Port Strategy
 
 - FastAPI backend: `8000`
