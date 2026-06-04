@@ -1,6 +1,6 @@
 # Founded Backend
 
-Backend foundation for Founded, a financial planning app for income, debt, projections, scenarios, snowball payoff planning, and dashboard-ready data.
+Backend foundation for Founded, a financial planning app for income, debt, projections, scenarios, debt payoff forecasting, and dashboard-ready data.
 
 ## Setup
 
