@@ -1,8 +1,9 @@
 const express = require('express');
-const { incomePlaceholder } = require('../controllers/IncomeController');
+const { getIncome, listIncome } = require('../controllers/IncomeController');
 
 const router = express.Router();
 
-router.all('*', incomePlaceholder);
+router.get('/', listIncome);
+router.get('/:id', getIncome);
 
 module.exports = router;

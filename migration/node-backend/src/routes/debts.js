@@ -1,8 +1,9 @@
 const express = require('express');
-const { debtPlaceholder } = require('../controllers/DebtController');
+const { getDebt, listDebts } = require('../controllers/DebtController');
 
 const router = express.Router();
 
-router.all('*', debtPlaceholder);
+router.get('/', listDebts);
+router.get('/:id', getDebt);
 
 module.exports = router;

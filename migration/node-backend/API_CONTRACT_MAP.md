@@ -4,7 +4,7 @@ Status date: June 4, 2026
 
 Current source of truth: FastAPI + SQLite.
 
-Express migration status: Phase 3 contract scaffold only. Route groups and controller placeholders exist, but no CRUD, MongoDB access, business logic, calculations, projections, or FastAPI endpoint behavior has been migrated.
+Express migration status: Phase 4 read-only retrieval framework for foundational data entities. MongoDB models are connected to GET-only controllers for accounts, income, debts, and interest rates, but no write routes, calculations, projections, scenarios, dashboard aggregation, data migration, or data parity validation exists.
 
 Allowed statuses:
 
@@ -12,48 +12,140 @@ Allowed statuses:
 - Scaffolded
 - Migrated
 - Validated
+- Deferred
+
+Allowed parity levels:
+
+- None
+- Contract
+- Data
+- Validated
 
 ## Route Contract Tracker
 
-| Current FastAPI Route | Express Route Group | Migration Phase | Status | Notes |
-| --- | --- | --- | --- | --- |
-| `GET /health` | `src/routes/health.js` / health route | Phase 1-2 | Validated | Health remains operational and reports `phase-2-mongodb` plus safe database status. |
-| `POST /account-balances` | `src/routes/accounts.js` / `AccountController` | Future CRUD route migration | Scaffolded | Create account balance route exists only as a route-group placeholder returning 501. |
-| `GET /account-balances` | `src/routes/accounts.js` / `AccountController` | Future CRUD route migration | Scaffolded | List account balances route exists only as a route-group placeholder returning 501. |
-| `GET /account-balances/:id` | `src/routes/accounts.js` / `AccountController` | Future CRUD route migration | Scaffolded | Retrieve account balance route exists only as a route-group placeholder returning 501. |
-| `PATCH /account-balances/:id` | `src/routes/accounts.js` / `AccountController` | Future CRUD route migration | Scaffolded | Update account balance route exists only as a route-group placeholder returning 501. |
-| `DELETE /account-balances/:id` | `src/routes/accounts.js` / `AccountController` | Future CRUD route migration | Scaffolded | Delete account balance route exists only as a route-group placeholder returning 501; account dependency checks are not migrated. |
-| `POST /income-sources` | `src/routes/income.js` / `IncomeController` | Future CRUD route migration | Scaffolded | Create income or account-transfer route exists only as a route-group placeholder returning 501. |
-| `GET /income-sources` | `src/routes/income.js` / `IncomeController` | Future CRUD route migration | Scaffolded | List income sources route exists only as a route-group placeholder returning 501. |
-| `GET /income-sources/:id` | `src/routes/income.js` / `IncomeController` | Future CRUD route migration | Scaffolded | Retrieve income source route exists only as a route-group placeholder returning 501. |
-| `PATCH /income-sources/:id` | `src/routes/income.js` / `IncomeController` | Future CRUD route migration | Scaffolded | Update income source route exists only as a route-group placeholder returning 501; transfer validation is not migrated. |
-| `DELETE /income-sources/:id` | `src/routes/income.js` / `IncomeController` | Future CRUD route migration | Scaffolded | Delete income source route exists only as a route-group placeholder returning 501. |
-| `POST /debts` | `src/routes/debts.js` / `DebtController` | Future CRUD route migration | Scaffolded | Create debt route exists only as a route-group placeholder returning 501. |
-| `GET /debts` | `src/routes/debts.js` / `DebtController` | Future CRUD route migration | Scaffolded | List debts route exists only as a route-group placeholder returning 501. |
-| `GET /debts/:id` | `src/routes/debts.js` / `DebtController` | Future CRUD route migration | Scaffolded | Retrieve debt route exists only as a route-group placeholder returning 501. |
-| `PATCH /debts/:id` | `src/routes/debts.js` / `DebtController` | Future CRUD route migration | Scaffolded | Update debt route exists only as a route-group placeholder returning 501; payoff target validation is not migrated. |
-| `DELETE /debts/:id` | `src/routes/debts.js` / `DebtController` | Future CRUD route migration | Scaffolded | Delete debt route exists only as a route-group placeholder returning 501; interest-rate cleanup is not migrated. |
-| `POST /interest-rates` | `src/routes/interestRates.js` / `InterestRateController` | Future CRUD route migration | Scaffolded | Create interest-rate route exists only as a route-group placeholder returning 501. |
-| `GET /interest-rates/debt/:debtId` | `src/routes/interestRates.js` / `InterestRateController` | Future CRUD route migration | Scaffolded | List rates for a debt route exists only as a route-group placeholder returning 501. |
-| `PATCH /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future CRUD route migration | Scaffolded | Update interest-rate route exists only as a route-group placeholder returning 501. |
-| `DELETE /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future CRUD route migration | Scaffolded | Delete interest-rate route exists only as a route-group placeholder returning 501. |
-| `POST /projections/baseline/generate` | `src/routes/projections.js` / `ProjectionController` | Future projection engine migration | Scaffolded | Baseline generation route exists only as a route-group placeholder returning 501; no projection logic is migrated. |
-| `POST /projections` | `src/routes/projections.js` / `ProjectionController` | Future saved projection migration | Scaffolded | Save projection route exists only as a route-group placeholder returning 501; overwrite behavior is not migrated. |
-| `GET /projections` | `src/routes/projections.js` / `ProjectionController` | Future saved projection migration | Scaffolded | List saved projections route exists only as a route-group placeholder returning 501. |
-| `GET /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Future saved projection migration | Scaffolded | Retrieve saved projection route exists only as a route-group placeholder returning 501. |
-| `DELETE /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Future saved projection migration | Scaffolded | Delete saved projection route exists only as a route-group placeholder returning 501. |
-| `POST /projections/baseline/generate-and-save` | `src/routes/projections.js` / `ProjectionController` | Future projection engine migration | Scaffolded | Legacy generate-and-save route remains tracked for parity; placeholder only. |
-| `POST /scenario/generate` | `src/routes/scenarios.js` / `ScenarioController` | Future scenario engine migration | Scaffolded | Scenario generation route exists only as a route-group placeholder returning 501; no scenario merge logic is migrated. |
-| `POST /scenario/save` | `src/routes/scenarios.js` / `ScenarioController` | Future scenario engine migration | Scaffolded | Scenario save route exists only as a route-group placeholder returning 501; no save behavior is migrated. |
-| `GET /scenario/:id` | `src/routes/scenarios.js` / `ScenarioController` | Future scenario route migration | Scaffolded | Saved scenario retrieval route exists only as a route-group placeholder returning 501. |
-| `POST /dashboard/:id/summary` | `src/routes/dashboard.js` / `DashboardController` | Future dashboard route migration | Scaffolded | Dashboard summary route exists only as a route-group placeholder returning 501; no summary logic is migrated. |
-| `GET /dashboard/:id/charts` | `src/routes/dashboard.js` / `DashboardController` | Future dashboard route migration | Scaffolded | Dashboard chart route exists only as a route-group placeholder returning 501; no chart logic is migrated. |
+| Current FastAPI Route | Express Route Group | Migration Phase | Status | Parity Level | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `GET /health` | `src/routes/health.js` / health route | Phase 1-2 | Validated | Contract | Health remains operational and reports `phase-2-mongodb` plus safe database status. |
+| `POST /account-balances` | `src/routes/accounts.js` / `AccountController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
+| `GET /account-balances` | `src/routes/accounts.js` / `AccountController` | Phase 4 read-only framework | Migrated | Contract | GET-only route calls `Account.find()` when MongoDB is connected; returns safe database status when unavailable. |
+| `GET /account-balances/:id` | `src/routes/accounts.js` / `AccountController` | Phase 4 read-only framework | Migrated | Contract | GET-only route supports ObjectId or `legacyId` lookup. |
+| `PATCH /account-balances/:id` | `src/routes/accounts.js` / `AccountController` | Future write route migration | Not Started | None | Write behavior and dependency checks are not implemented in Phase 4. |
+| `DELETE /account-balances/:id` | `src/routes/accounts.js` / `AccountController` | Future write route migration | Not Started | None | Write behavior and dependency checks are not implemented in Phase 4. |
+| `POST /income-sources` | `src/routes/income.js` / `IncomeController` | Future write route migration | Not Started | None | Write behavior and transfer validation are not implemented in Phase 4. |
+| `GET /income-sources` | `src/routes/income.js` / `IncomeController` | Phase 4 read-only framework | Migrated | Contract | GET-only route calls `Income.find()` when MongoDB is connected; returns safe database status when unavailable. |
+| `GET /income-sources/:id` | `src/routes/income.js` / `IncomeController` | Phase 4 read-only framework | Migrated | Contract | GET-only route supports ObjectId or `legacyId` lookup. |
+| `PATCH /income-sources/:id` | `src/routes/income.js` / `IncomeController` | Future write route migration | Not Started | None | Write behavior and transfer validation are not implemented in Phase 4. |
+| `DELETE /income-sources/:id` | `src/routes/income.js` / `IncomeController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
+| `POST /debts` | `src/routes/debts.js` / `DebtController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
+| `GET /debts` | `src/routes/debts.js` / `DebtController` | Phase 4 read-only framework | Migrated | Contract | GET-only route calls `Debt.find()` when MongoDB is connected; returns safe database status when unavailable. |
+| `GET /debts/:id` | `src/routes/debts.js` / `DebtController` | Phase 4 read-only framework | Migrated | Contract | GET-only route supports ObjectId or `legacyId` lookup. Nested `interest_rates` remain a documented contract difference until response adaptation is explicitly approved. |
+| `PATCH /debts/:id` | `src/routes/debts.js` / `DebtController` | Future write route migration | Not Started | None | Write behavior and payoff validation are not implemented in Phase 4. |
+| `DELETE /debts/:id` | `src/routes/debts.js` / `DebtController` | Future write route migration | Not Started | None | Write behavior and interest-rate cleanup are not implemented in Phase 4. |
+| `POST /interest-rates` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
+| `GET /interest-rates/debt/:debtId` | `src/routes/interestRates.js` / `InterestRateController` | Phase 4 read-only framework | Migrated | Contract | GET-only route calls `InterestRate.find()` by ObjectId or `legacy_debt_id`. |
+| `PATCH /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
+| `DELETE /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
+| `POST /projections/baseline/generate` | `src/routes/projections.js` / `ProjectionController` | Deferred projection engine migration | Deferred | None | Explicitly deferred; no projection logic is migrated. |
+| `POST /projections` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; no saved projection write behavior is migrated. |
+| `GET /projections` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; saved projection retrieval remains scaffold-only. |
+| `GET /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; saved projection retrieval remains scaffold-only. |
+| `DELETE /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; no delete behavior is migrated. |
+| `POST /projections/baseline/generate-and-save` | `src/routes/projections.js` / `ProjectionController` | Deferred projection engine migration | Deferred | None | Explicitly deferred; legacy route remains tracked for parity. |
+| `POST /scenario/generate` | `src/routes/scenarios.js` / `ScenarioController` | Deferred scenario engine migration | Deferred | None | Explicitly deferred; no scenario merge logic is migrated. |
+| `POST /scenario/save` | `src/routes/scenarios.js` / `ScenarioController` | Deferred scenario engine migration | Deferred | None | Explicitly deferred; no scenario save behavior is migrated. |
+| `GET /scenario/:id` | `src/routes/scenarios.js` / `ScenarioController` | Deferred scenario route migration | Deferred | None | Explicitly deferred; saved scenario retrieval remains scaffold-only. |
+| `POST /dashboard/:id/summary` | `src/routes/dashboard.js` / `DashboardController` | Deferred dashboard route migration | Deferred | None | Explicitly deferred; no dashboard summary aggregation is migrated. |
+| `GET /dashboard/:id/charts` | `src/routes/dashboard.js` / `DashboardController` | Deferred dashboard route migration | Deferred | None | Explicitly deferred; no chart aggregation is migrated. |
 
-## Phase 3 Scaffold Notes
+## Phase 4 Data Availability Strategy
 
-- Route groups are registered by production-style URL prefixes so later phases can migrate endpoints incrementally.
-- Controller files export placeholder handlers only.
-- Placeholder handlers do not import Mongoose models.
-- Placeholder handlers do not query or write MongoDB.
-- Placeholder handlers do not replicate FastAPI route behavior.
-- Health remains separate and keeps the Phase 2 response shape until a future approved phase changes it.
+| State | Condition | Expected Express Behavior |
+| --- | --- | --- |
+| A | MongoDB is not configured | GET routes return `503` with `status: "database-unavailable"` and `database: "not-configured"`. The server does not crash. |
+| B | MongoDB is configured but empty | List GET routes return valid empty arrays. Item GET routes return `404` when no matching document exists. No fake data is returned. |
+| C | MongoDB is configured with data | GET routes return available MongoDB records. This is not data parity until imported data is validated against FastAPI outputs. |
+
+## Contract Comparison
+
+### Accounts
+
+FastAPI response shape:
+
+- `GET /account-balances` returns an array of account balance records.
+- `GET /account-balances/{id}` returns one account balance record.
+- Records use snake_case fields and numeric `id`.
+
+Express response shape:
+
+- `GET /account-balances` returns an array of MongoDB account documents when connected.
+- `GET /account-balances/:id` returns one MongoDB account document by ObjectId or `legacyId` when connected.
+- When MongoDB is unavailable, Express returns safe database status instead of attempting a query.
+
+Differences and deferred items:
+
+- Express documents may include MongoDB `_id`.
+- Numeric `id` response adaptation is deferred.
+- Data parity is not claimed because MongoDB data migration has not occurred.
+
+### Income
+
+FastAPI response shape:
+
+- `GET /income-sources` returns an array of income source and account-transfer records.
+- `GET /income-sources/{id}` returns one income source record.
+- Records use snake_case fields and numeric `id`.
+
+Express response shape:
+
+- `GET /income-sources` returns an array of MongoDB income documents when connected.
+- `GET /income-sources/:id` returns one MongoDB income document by ObjectId or `legacyId` when connected.
+
+Differences and deferred items:
+
+- Express documents may include MongoDB `_id`.
+- Account reference response adaptation is deferred.
+- Transfer validation and all write behavior are deferred.
+
+### Debts
+
+FastAPI response shape:
+
+- `GET /debts` returns an array of debt records.
+- `GET /debts/{id}` returns one debt record.
+- Debt records include nested `interest_rates`.
+
+Express response shape:
+
+- `GET /debts` returns an array of MongoDB debt documents when connected.
+- `GET /debts/:id` returns one MongoDB debt document by ObjectId or `legacyId` when connected.
+
+Differences and deferred items:
+
+- Nested `interest_rates` are not attached in Phase 4.
+- Debt response adaptation and interest-rate embedding/population are deferred.
+- No debt calculation, payoff, or projection behavior is migrated.
+
+### Interest Rates
+
+FastAPI response shape:
+
+- `GET /interest-rates/debt/{debt_id}` returns interest-rate records for one debt.
+- Records use snake_case fields and numeric ids.
+
+Express response shape:
+
+- `GET /interest-rates/debt/:debtId` returns MongoDB interest-rate documents by debt ObjectId or `legacy_debt_id` when connected.
+
+Differences and deferred items:
+
+- Express documents may include MongoDB `_id`.
+- Numeric `id` response adaptation is deferred.
+- Interest-rate write routes remain unimplemented.
+
+## Phase 4 Guardrails
+
+- Route groups for accounts, income, debts, and interest rates define GET routes only.
+- These controllers import Mongoose models only for read operations.
+- No POST, PATCH, PUT, or DELETE routes are defined for these groups.
+- Projections, scenarios, and dashboard remain deferred scaffold route groups.
+- No calculations, projection generation, scenario generation, dashboard aggregation, demo data migration, or frontend rewiring exists in Phase 4.

@@ -1,8 +1,9 @@
 const express = require('express');
-const { accountPlaceholder } = require('../controllers/AccountController');
+const { getAccount, listAccounts } = require('../controllers/AccountController');
 
 const router = express.Router();
 
-router.all('*', accountPlaceholder);
+router.get('/', listAccounts);
+router.get('/:id', getAccount);
 
 module.exports = router;

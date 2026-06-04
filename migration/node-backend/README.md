@@ -2,7 +2,7 @@
 
 ## Current Migration Phase
 
-Phase 3: API Route Contract Scaffold.
+Phase 4: Read-Only Data Retrieval Framework.
 
 This workspace contains only the experimental Node.js / Express infrastructure layer for the Founded migration. It does not contain migrated business logic, projection logic, calculation logic, authentication, exports, reports, or frontend rewiring.
 
@@ -28,6 +28,11 @@ The Express backend in this folder is experimental migration infrastructure only
 - Phase 3: controller placeholder files.
 - Phase 3: generic not-found and error middleware.
 - Phase 3: API contract migration tracker in `API_CONTRACT_MAP.md`.
+- Phase 4: GET-only account balance retrieval framework.
+- Phase 4: GET-only income source retrieval framework.
+- Phase 4: GET-only debt retrieval framework.
+- Phase 4: GET-only interest-rate retrieval framework.
+- Phase 4: data availability states documented and handled.
 
 ## Remaining Phases
 
@@ -175,9 +180,9 @@ migration/node-backend/
       ScenarioController.js
 ```
 
-## API Contract Scaffold
+## API Contract Scaffold And Read-Only Framework
 
-Phase 3 adds route-group architecture only. The scaffolded route groups return:
+Phase 3 added route-group architecture only. Deferred scaffolded route groups return:
 
 ```json
 {
@@ -186,7 +191,29 @@ Phase 3 adds route-group architecture only. The scaffolded route groups return:
 }
 ```
 
-The placeholder routes do not import Mongoose models, do not query MongoDB, do not implement CRUD, and do not replicate FastAPI behavior. The contract tracker in `API_CONTRACT_MAP.md` is the source document for future endpoint migration status.
+Phase 4 connects GET-only retrieval routes for:
+
+- `GET /account-balances`
+- `GET /account-balances/:id`
+- `GET /income-sources`
+- `GET /income-sources/:id`
+- `GET /debts`
+- `GET /debts/:id`
+- `GET /interest-rates/debt/:debtId`
+
+These routes call Mongoose models only when MongoDB is connected. If MongoDB is not configured or unavailable, the routes return safe database status and do not crash.
+
+No POST, PUT, PATCH, or DELETE routes are implemented for these groups. Projections, scenarios, and dashboard remain scaffold-only and deferred. The contract tracker in `API_CONTRACT_MAP.md` is the source document for future endpoint migration status.
+
+## Data Availability States
+
+| State | Condition | Behavior |
+| --- | --- | --- |
+| A | MongoDB not configured | GET routes return `503` with `database: "not-configured"`. |
+| B | MongoDB configured but empty | List routes return `[]`; item routes return `404` for missing documents. |
+| C | MongoDB configured with data | GET routes return available MongoDB records without claiming data parity. |
+
+Data parity is not claimed in Phase 4 because MongoDB seed/import work has not happened.
 
 ## Port Strategy
 

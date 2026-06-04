@@ -1,8 +1,8 @@
 const express = require('express');
-const { interestRatePlaceholder } = require('../controllers/InterestRateController');
+const { listInterestRatesForDebt } = require('../controllers/InterestRateController');
 
 const router = express.Router();
 
-router.all('*', interestRatePlaceholder);
+router.get('/debt/:debtId', listInterestRatesForDebt);
 
 module.exports = router;
