@@ -22,7 +22,7 @@ def sample_inputs():
     debts = [
         obj(
             id=1,
-            name="Chase",
+            name="Rewards Card",
             debt_type="credit_card",
             starting_balance=1000,
             current_balance=1000,
@@ -60,9 +60,9 @@ def test_monthly_projection_generation_and_payoff_stops_at_zero():
 
     assert rows[0]["Income"] == 5000
     assert rows[1]["Income"] == 5500
-    assert rows[-1]["Chase"] == 0
-    assert rows[-1]["Chase Payment"] == 0
-    assert any("Chase" in row["Debts Paid Off"] for row in rows)
+    assert rows[-1]["Rewards Card"] == 0
+    assert rows[-1]["Rewards Card Payment"] == 0
+    assert any("Rewards Card" in row["Debts Paid Off"] for row in rows)
     assert all(row["Total Debt"] >= 0 for row in rows)
 
 
@@ -593,7 +593,7 @@ def test_account_projection_allocates_monthly_activity_and_reconciles_to_overall
         ),
     ]
     account_balances = [
-        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=1, name="Alex Checking", owner="Alex", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
         obj(id=2, name="Joint Checking", owner="Joint", account_type="Checking", amount=500, date=date(2026, 1, 1), active=True),
     ]
 
@@ -630,7 +630,7 @@ def test_account_projection_transfer_recurrence_moves_cash_without_changing_over
         )
     ]
     account_balances = [
-        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=1, name="Alex Checking", owner="Alex", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
         obj(id=2, name="Joint Checking", owner="Joint", account_type="Checking", amount=0, date=date(2026, 1, 1), active=True),
     ]
 
@@ -650,7 +650,7 @@ def test_account_projection_transfer_recurrence_moves_cash_without_changing_over
     owner_totals = {}
     for account in account_row["accounts"]:
         owner_totals[account["owner"]] = owner_totals.get(account["owner"], 0) + account["cash_balance"]
-    assert owner_totals["Don"] == 500
+    assert owner_totals["Alex"] == 500
     assert owner_totals["Joint"] == 500
     assert sum(owner_totals.values()) == projection["generated_rows"][0]["Cash Balance"]
 
@@ -659,7 +659,7 @@ def test_same_owner_transfer_preserves_owner_rollup_cash_balance():
     income = [
         obj(
             id=1,
-            label="Don Transfer",
+            label="Alex Transfer",
             amount=250,
             start_date=date(2026, 1, 1),
             end_date=None,
@@ -671,15 +671,15 @@ def test_same_owner_transfer_preserves_owner_rollup_cash_balance():
         )
     ]
     account_balances = [
-        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
-        obj(id=2, name="Don Savings", owner="Don", account_type="Savings", amount=100, date=date(2026, 1, 1), active=True),
+        obj(id=1, name="Alex Checking", owner="Alex", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=2, name="Alex Savings", owner="Alex", account_type="Savings", amount=100, date=date(2026, 1, 1), active=True),
     ]
 
     projection = generate_baseline_projection(income, [], [], date(2026, 1, 1), months=1, account_balances=account_balances)
     account_row = projection["account_projection_rows"][0]
     don_checking = next(account for account in account_row["accounts"] if account["account_balance_id"] == 1)
     don_savings = next(account for account in account_row["accounts"] if account["account_balance_id"] == 2)
-    owner_total = sum(account["cash_balance"] for account in account_row["accounts"] if account["owner"] == "Don")
+    owner_total = sum(account["cash_balance"] for account in account_row["accounts"] if account["owner"] == "Alex")
 
     assert don_checking["cash_balance"] == 750
     assert don_savings["cash_balance"] == 350
@@ -701,7 +701,7 @@ def test_scenario_account_projection_tracks_transfers_without_changing_scenario_
         )
     ]
     account_balances = [
-        obj(id=1, name="Don Checking", owner="Don", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
+        obj(id=1, name="Alex Checking", owner="Alex", account_type="Checking", amount=1000, date=date(2026, 1, 1), active=True),
         obj(id=2, name="Joint Checking", owner="Joint", account_type="Checking", amount=0, date=date(2026, 1, 1), active=True),
     ]
     baseline = generate_baseline_projection(income, [], [], date(2026, 1, 1), months=1, account_balances=account_balances)
@@ -988,7 +988,7 @@ def test_dashboard_summary_uses_account_names_and_current_apr():
 
     dashboard = dashboard_summary(saved)
     names = {item["name"] for item in dashboard["datasets"]["debt_breakdown_by_account"]}
-    assert names == {"Chase", "Car"}
+    assert names == {"Rewards Card", "Car"}
     assert dashboard["summary"]["highest_apr_debt"] == "Car"
 
 

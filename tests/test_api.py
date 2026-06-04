@@ -33,7 +33,7 @@ def setup_function():
     try:
         income = IncomeSource(label="Salary", amount=5000, start_date=date(2026, 1, 1))
         debt = Debt(
-            name="Chase",
+            name="Rewards Card",
             debt_type=DebtType.credit_card,
             starting_balance=1000,
             current_balance=1000,
@@ -125,8 +125,8 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
     account = client.post(
         "/account-balances",
         json={
-            "name": "USAA Checking",
-            "owner": "Don Wilson",
+            "name": "Demo Checking",
+            "owner": "Alex Demo",
             "account_type": "Money Market",
             "amount": 5000,
             "date": "2026-01-01",
@@ -137,7 +137,7 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
     transfer_target = client.post(
         "/account-balances",
         json={
-            "name": "USAA Joint",
+            "name": "Joint Demo Checking",
             "owner": "Joint",
             "account_type": "Checking",
             "amount": 0,
@@ -202,7 +202,7 @@ def test_account_owner_type_and_assignments_persist_in_projection_snapshot():
     assert generated.status_code == 200
     snapshot = generated.json()["assumptions_snapshot"]
 
-    assert snapshot["account_balances"][0]["owner"] == "Don Wilson"
+    assert snapshot["account_balances"][0]["owner"] == "Alex Demo"
     assert snapshot["account_balances"][0]["account_type"] == "Money Market"
     assert snapshot["income_sources"][0]["account_balance_id"] == account_id
     assert snapshot["income_sources"][1]["is_account_transfer"] is True
@@ -274,7 +274,7 @@ def test_account_transfer_api_rejects_same_from_and_to_account():
 
 
 def test_account_transfers_do_not_change_overall_projection_totals():
-    from_account = create_account("Don Checking")
+    from_account = create_account("Alex Checking")
     to_account = create_account("Joint Checking")
     transfer = client.post(
         "/income-sources",
@@ -439,7 +439,7 @@ def test_scenario_transfer_override_rejects_same_from_and_to_account():
 
 
 def test_scenario_transfer_override_allowed_and_preserves_overall_totals():
-    from_account = create_account("Don Checking")
+    from_account = create_account("Alex Checking")
     to_account = create_account("Joint Checking")
     income = client.post(
         "/income-sources",
@@ -560,7 +560,7 @@ def test_generate_projection_can_be_scoped_to_selected_working_inputs():
     row = generated.json()["generated_rows"][0]
     assert row["Income"] == 1000
     assert row["Cash Balance"] == 1100
-    assert "Chase" not in row
+    assert "Rewards Card" not in row
 
 
 def test_other_debt_accepts_one_time_recurrence_and_blank_optional_fields():
