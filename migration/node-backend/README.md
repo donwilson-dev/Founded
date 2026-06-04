@@ -2,7 +2,7 @@
 
 ## Current Migration Phase
 
-Phase 2: MongoDB Models and Connection Setup.
+Phase 3: API Route Contract Scaffold.
 
 This workspace contains only the experimental Node.js / Express infrastructure layer for the Founded migration. It does not contain migrated business logic, projection logic, calculation logic, authentication, exports, reports, or frontend rewiring.
 
@@ -24,10 +24,14 @@ The Express backend in this folder is experimental migration infrastructure only
 - Phase 2: safe database status reporting in `GET /health`.
 - Phase 2: initial schema-only Mongoose models.
 - Phase 2: model mapping documentation.
+- Phase 3: API route groups registered as placeholders.
+- Phase 3: controller placeholder files.
+- Phase 3: generic not-found and error middleware.
+- Phase 3: API contract migration tracker in `API_CONTRACT_MAP.md`.
 
 ## Remaining Phases
 
-- Phase 3: route migration.
+- Future Phase 3+: endpoint-by-endpoint route migration.
 - Phase 4: direct JavaScript calculation engine port.
 - Phase 5: projection engine port.
 - Phase 6: frontend API rewire only if required.
@@ -141,6 +145,8 @@ migration/node-backend/
       database.js
       env.js
     middleware/
+      errorHandler.js
+      notFound.js
       requestLogger.js
     models/
       Account.js
@@ -151,8 +157,36 @@ migration/node-backend/
       Scenario.js
       index.js
     routes/
+      accounts.js
+      dashboard.js
+      debts.js
       health.js
+      income.js
+      interestRates.js
+      projections.js
+      scenarios.js
+    controllers/
+      AccountController.js
+      DashboardController.js
+      DebtController.js
+      IncomeController.js
+      InterestRateController.js
+      ProjectionController.js
+      ScenarioController.js
 ```
+
+## API Contract Scaffold
+
+Phase 3 adds route-group architecture only. The scaffolded route groups return:
+
+```json
+{
+  "status": "not-implemented",
+  "phase": "phase-3-contract-scaffold"
+}
+```
+
+The placeholder routes do not import Mongoose models, do not query MongoDB, do not implement CRUD, and do not replicate FastAPI behavior. The contract tracker in `API_CONTRACT_MAP.md` is the source document for future endpoint migration status.
 
 ## Port Strategy
 
