@@ -2,7 +2,7 @@
 
 ## Current Migration Phase
 
-Phase 4: Read-Only Data Retrieval Framework.
+Phase 8A: Local MongoDB environment setup and validation.
 
 This workspace contains only the experimental Node.js / Express infrastructure layer for the Founded migration. It does not contain migrated business logic, projection logic, calculation logic, authentication, exports, reports, or frontend rewiring.
 
@@ -108,6 +108,73 @@ What does not exist:
 - No frontend rewiring.
 
 The models are schema definitions only. They are not connected to routes, they do not contain business logic, and they do not contain calculation logic.
+
+## Local MongoDB Community Server Validation Setup
+
+Phase 8A-B uses local MongoDB Community Server for connection validation only. FastAPI + SQLite remains the source of truth, and no dataset import or collection population is part of this phase.
+
+Observed local validation environment:
+
+- Deployment method: MongoDB Community Server.
+- MongoDB version: `8.3.2`.
+- Windows service name: `MongoDB`.
+- Service display name: `MongoDB Server (MongoDB)`.
+- Process name: `mongod.exe`.
+- Installed binary: `C:\Program Files\MongoDB\Server\8.3\bin\mongod.exe`.
+- Host/port: `127.0.0.1:27017`.
+- Database name: `founded_migration`.
+- Connection URI pattern: `mongodb://127.0.0.1:27017/founded_migration`.
+
+Create a local environment file in this folder:
+
+```powershell
+cd migration\node-backend
+Copy-Item .env.example .env
+```
+
+Set the local MongoDB URI:
+
+```text
+MONGODB_URI=mongodb://127.0.0.1:27017/founded_migration
+```
+
+The `.env` file is ignored by git and must stay local. Do not commit connection strings, credentials, or local environment files.
+
+Verify the MongoDB Windows service:
+
+```powershell
+Get-Service -Name MongoDB
+```
+
+Start the service from an elevated PowerShell session if it is not already running:
+
+```powershell
+Start-Service -Name MongoDB
+```
+
+Verify the local port:
+
+```powershell
+Test-NetConnection -ComputerName 127.0.0.1 -Port 27017
+```
+
+Then start the migration backend from this folder:
+
+```powershell
+npm run dev
+```
+
+With `MONGODB_URI` unset, `GET /health` reports `database: "not-configured"`. With MongoDB Community Server running and the `.env` value above, `GET /health` reports `database: "connected"`.
+
+If service control is unavailable in the current shell, the installed Community Server binary can still be used for local validation with a writable local data/log path. This is a local development fallback only; it does not change the application source of truth or import data.
+
+Dataset protection rules for Phase 8A:
+
+- Do not run a dataset import.
+- Do not seed or populate collections.
+- Validation collections may be absent or empty.
+- Expected local collection counts for this phase are `0` when collections exist.
+- Phase 8 dataset import remains deferred until separately approved.
 
 ## Model Mapping
 
