@@ -4,7 +4,7 @@ Status date: June 4, 2026
 
 Current source of truth: FastAPI + SQLite.
 
-Express migration status: Phase 4 read-only retrieval framework for foundational data entities. MongoDB models are connected to GET-only controllers for accounts, income, debts, and interest rates, but no write routes, calculations, projections, scenarios, dashboard aggregation, data migration, or data parity validation exists.
+Express migration status: Phase 6 route contract scaffold. MongoDB models are connected to GET-only controllers for accounts, income, debts, and interest rates. Scenario, saved projection, projection, and dashboard route groups are registered as `501` placeholders only. No write behavior, calculations, projections, scenarios, dashboard aggregation, data migration, or data parity validation exists.
 
 Allowed statuses:
 
@@ -45,17 +45,18 @@ Allowed parity levels:
 | `GET /interest-rates/debt/:debtId` | `src/routes/interestRates.js` / `InterestRateController` | Phase 4 read-only framework | Migrated | Contract | GET-only route calls `InterestRate.find()` by ObjectId or `legacy_debt_id`. |
 | `PATCH /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
 | `DELETE /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
-| `POST /projections/baseline/generate` | `src/routes/projections.js` / `ProjectionController` | Deferred projection engine migration | Deferred | None | Explicitly deferred; no projection logic is migrated. |
-| `POST /projections` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; no saved projection write behavior is migrated. |
-| `GET /projections` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; saved projection retrieval remains scaffold-only. |
-| `GET /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; saved projection retrieval remains scaffold-only. |
-| `DELETE /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Deferred saved projection migration | Deferred | None | Explicitly deferred; no delete behavior is migrated. |
-| `POST /projections/baseline/generate-and-save` | `src/routes/projections.js` / `ProjectionController` | Deferred projection engine migration | Deferred | None | Explicitly deferred; legacy route remains tracked for parity. |
-| `POST /scenario/generate` | `src/routes/scenarios.js` / `ScenarioController` | Deferred scenario engine migration | Deferred | None | Explicitly deferred; no scenario merge logic is migrated. |
-| `POST /scenario/save` | `src/routes/scenarios.js` / `ScenarioController` | Deferred scenario engine migration | Deferred | None | Explicitly deferred; no scenario save behavior is migrated. |
-| `GET /scenario/:id` | `src/routes/scenarios.js` / `ScenarioController` | Deferred scenario route migration | Deferred | None | Explicitly deferred; saved scenario retrieval remains scaffold-only. |
-| `POST /dashboard/:id/summary` | `src/routes/dashboard.js` / `DashboardController` | Deferred dashboard route migration | Deferred | None | Explicitly deferred; no dashboard summary aggregation is migrated. |
-| `GET /dashboard/:id/charts` | `src/routes/dashboard.js` / `DashboardController` | Deferred dashboard route migration | Deferred | None | Explicitly deferred; no chart aggregation is migrated. |
+| `POST /projections/baseline/generate` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no projection logic is migrated. |
+| `POST /projections` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no saved projection write behavior is migrated. |
+| `GET /projections` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; saved projection retrieval remains scaffold-only. |
+| `GET /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; saved projection retrieval remains scaffold-only. |
+| `DELETE /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no delete behavior is migrated. |
+| `POST /projections/baseline/generate-and-save` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; legacy route remains tracked for parity. |
+| `POST /scenario/generate` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no scenario merge logic is migrated. |
+| `POST /scenario/save` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no scenario save behavior is migrated. |
+| `GET /scenario/:id` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; saved scenario retrieval remains scaffold-only. |
+| `GET /scenarios` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Plural scenario route group placeholder returns `501`; no scenario retrieval or business logic is migrated. |
+| `POST /dashboard/:id/summary` | `src/routes/dashboard.js` / `DashboardController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no dashboard summary aggregation is migrated. |
+| `GET /dashboard/:id/charts` | `src/routes/dashboard.js` / `DashboardController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no chart aggregation is migrated. |
 
 ## Phase 4 Data Availability Strategy
 
@@ -147,8 +148,8 @@ Differences and deferred items:
 - Route groups for accounts, income, debts, and interest rates define GET routes only.
 - These controllers import Mongoose models only for read operations.
 - No POST, PATCH, PUT, or DELETE routes are defined for these groups.
-- Projections, scenarios, and dashboard remain deferred scaffold route groups.
-- No calculations, projection generation, scenario generation, dashboard aggregation, demo data migration, or frontend rewiring exists in Phase 4.
+- Projections, scenarios, and dashboard are registered as `501` placeholder route groups in Phase 6.
+- No calculations, projection generation, scenario generation, dashboard aggregation, demo data migration, or frontend rewiring exists in Phase 6.
 
 ## Dataset Readiness
 
