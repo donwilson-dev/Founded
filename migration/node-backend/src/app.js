@@ -28,7 +28,6 @@ function createApp() {
   app.use('/income-sources', incomeRoutes);
   app.use('/interest-rates', interestRateRoutes);
   app.use('/projections', projectionRoutes);
-  app.use('/scenario', scenarioRoutes);
   app.use('/scenarios', scenarioRoutes);
 
   app.use(notFound);

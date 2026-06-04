@@ -4,12 +4,13 @@ Status date: June 4, 2026
 
 Current source of truth: FastAPI + SQLite.
 
-Express migration status: Phase 6 route contract scaffold. MongoDB models are connected to GET-only controllers for accounts, income, debts, and interest rates. Scenario, saved projection, projection, and dashboard route groups are registered as `501` placeholders only. No write behavior, calculations, projections, scenarios, dashboard aggregation, data migration, or data parity validation exists.
+Express migration status: Phase 7 scenario and saved projection read-only retrieval framework. MongoDB models are connected to GET-only controllers for accounts, income, debts, interest rates, saved projections, and scenarios. Dashboard remains a `501` placeholder. No write behavior, calculations, projection generation, scenario execution, dashboard aggregation, data migration, or data parity validation exists.
 
 Allowed statuses:
 
 - Not Started
 - Scaffolded
+- Retrieval Implemented
 - Migrated
 - Validated
 - Deferred
@@ -45,16 +46,16 @@ Allowed parity levels:
 | `GET /interest-rates/debt/:debtId` | `src/routes/interestRates.js` / `InterestRateController` | Phase 4 read-only framework | Migrated | Contract | GET-only route calls `InterestRate.find()` by ObjectId or `legacy_debt_id`. |
 | `PATCH /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
 | `DELETE /interest-rates/:id` | `src/routes/interestRates.js` / `InterestRateController` | Future write route migration | Not Started | None | Write behavior is not implemented in Phase 4. |
-| `POST /projections/baseline/generate` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no projection logic is migrated. |
-| `POST /projections` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no saved projection write behavior is migrated. |
-| `GET /projections` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; saved projection retrieval remains scaffold-only. |
-| `GET /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; saved projection retrieval remains scaffold-only. |
-| `DELETE /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no delete behavior is migrated. |
-| `POST /projections/baseline/generate-and-save` | `src/routes/projections.js` / `ProjectionController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; legacy route remains tracked for parity. |
-| `POST /scenario/generate` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no scenario merge logic is migrated. |
-| `POST /scenario/save` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no scenario save behavior is migrated. |
-| `GET /scenario/:id` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; saved scenario retrieval remains scaffold-only. |
-| `GET /scenarios` | `src/routes/scenarios.js` / `ScenarioController` | Phase 6 contract scaffold | Scaffolded | None | Plural scenario route group placeholder returns `501`; no scenario retrieval or business logic is migrated. |
+| `POST /projections/baseline/generate` | No Express route in Phase 7 | Deferred projection engine migration | Not Started | None | Explicitly deferred; no projection generation route or projection logic is migrated. |
+| `POST /projections` | No Express route in Phase 7 | Future write route migration | Not Started | None | Saved projection write behavior is not implemented. |
+| `GET /projections` | `src/routes/projections.js` / `ProjectionController` | Phase 7 read-only retrieval framework | Retrieval Implemented | Contract | GET-only route calls `SavedProjection.find()` when MongoDB is connected; returns safe database status when unavailable. |
+| `GET /projections/:id` | `src/routes/projections.js` / `ProjectionController` | Phase 7 read-only retrieval framework | Retrieval Implemented | Contract | GET-only route supports ObjectId or `legacyId` lookup. Stored projection values are returned as-is and are never recalculated. |
+| `DELETE /projections/:id` | No Express route in Phase 7 | Future write route migration | Not Started | None | Saved projection delete behavior is not implemented. |
+| `POST /projections/baseline/generate-and-save` | No Express route in Phase 7 | Deferred projection engine migration | Not Started | None | Legacy generate-and-save route remains tracked for future parity but is not implemented. |
+| `POST /scenario/generate` | No Express route in Phase 7 | Deferred scenario engine migration | Not Started | None | Scenario generation and merge logic are not implemented. |
+| `POST /scenario/save` | No Express route in Phase 7 | Future write route migration | Not Started | None | Scenario save behavior is not implemented. |
+| `GET /scenario/:id` | `GET /scenarios/:id` via `src/routes/scenarios.js` / `ScenarioController` | Phase 7 read-only retrieval framework | Retrieval Implemented | Contract | Express uses the plural route group and retrieves stored scenario documents only. Scenario values are never applied or recalculated. |
+| Scenario projection subset | `GET /scenarios` via `src/routes/scenarios.js` / `ScenarioController` | Phase 7 read-only retrieval framework | Retrieval Implemented | Contract | GET-only route returns stored saved projection documents where `projection_type` is `scenario`. Data parity is not claimed. |
 | `POST /dashboard/:id/summary` | `src/routes/dashboard.js` / `DashboardController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no dashboard summary aggregation is migrated. |
 | `GET /dashboard/:id/charts` | `src/routes/dashboard.js` / `DashboardController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no chart aggregation is migrated. |
 
@@ -143,13 +144,65 @@ Differences and deferred items:
 - Numeric `id` response adaptation is deferred.
 - Interest-rate write routes remain unimplemented.
 
-## Phase 4 Guardrails
+### Saved Projections
+
+FastAPI response shape:
+
+- `GET /projections` returns an array of saved projection summaries with numeric `id`, `title`, `projection_type`, `created_at`, `updated_at`, and `notes`.
+- `GET /projections/{id}` returns one saved projection record with numeric `id`, `title`, `projection_type`, `notes`, `assumptions_snapshot`, `generated_rows`, `created_at`, and `updated_at`.
+
+Express response shape:
+
+- `GET /projections` returns stored MongoDB saved projection documents when connected.
+- `GET /projections/:id` returns one stored MongoDB saved projection document by ObjectId or `legacyId` when connected.
+- When MongoDB is unavailable, Express returns safe database status instead of attempting a query.
+
+Differences and deferred items:
+
+- Express documents may include MongoDB `_id`.
+- Numeric `id` response adaptation is deferred.
+- List response summary shaping is deferred; Phase 7 returns stored documents only.
+- Stored `assumptions_snapshot` and `generated_rows` are returned as stored and are never regenerated, refreshed, or recalculated.
+- Projection generation, generate-and-save, save, delete, data parity, and financial validation remain unimplemented.
+
+### Scenarios
+
+FastAPI response shape:
+
+- `GET /scenario/{projection_id}` returns one saved projection record only when `projection_type` is `scenario`.
+- Scenario list behavior is currently represented through saved projection listing and frontend filtering.
+
+Express response shape:
+
+- `GET /scenarios` returns stored MongoDB saved projection documents where `projection_type` is `scenario` when connected.
+- `GET /scenarios/:id` returns one stored MongoDB scenario document by ObjectId or `legacyId` when connected and filters to `projection_type: "scenario"`.
+- When MongoDB is unavailable, Express returns safe database status instead of attempting a query.
+
+Differences and deferred items:
+
+- Express uses plural `/scenarios` route grouping for the migration backend.
+- Express documents may include MongoDB `_id`.
+- Numeric `id` response adaptation is deferred.
+- Scenario generation, scenario save, scenario application, scenario impact calculation, data parity, and financial validation remain unimplemented.
+- Stored scenario `assumptions_snapshot` and `generated_rows` are returned as stored and are never recomputed.
+
+## Phase 7 Data Availability Strategy
+
+| State | Condition | Expected Express Behavior |
+| --- | --- | --- |
+| A | MongoDB is not configured | Scenario and projection GET routes return `503` with `status: "database-unavailable"` and `database: "not-configured"`. The server does not crash. |
+| B | MongoDB is configured but empty | List GET routes return valid empty arrays. Item GET routes return `404` when no matching document exists. No fake data is returned. |
+| C | MongoDB is configured with data | GET routes return stored MongoDB scenario and saved projection documents. This is documented for future verification only; Dataset Version 1.0 import remains deferred. |
+
+## Phase 7 Guardrails
 
 - Route groups for accounts, income, debts, and interest rates define GET routes only.
 - These controllers import Mongoose models only for read operations.
-- No POST, PATCH, PUT, or DELETE routes are defined for these groups.
-- Projections, scenarios, and dashboard are registered as `501` placeholder route groups in Phase 6.
-- No calculations, projection generation, scenario generation, dashboard aggregation, demo data migration, or frontend rewiring exists in Phase 6.
+- Scenario and projection route groups define only `GET /scenarios`, `GET /scenarios/:id`, `GET /projections`, and `GET /projections/:id`.
+- Scenario and projection controllers import Mongoose models only for read operations.
+- No POST, PATCH, PUT, or DELETE scenario/projection routes are defined in Phase 7.
+- Dashboard remains a `501` placeholder route group from Phase 6.
+- No calculations, projection generation, projection refresh, scenario generation, scenario execution, dashboard aggregation, demo data migration, or frontend rewiring exists in Phase 7.
 
 ## Dataset Readiness
 

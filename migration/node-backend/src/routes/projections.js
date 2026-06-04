@@ -1,8 +1,9 @@
 const express = require('express');
-const { projectionPlaceholder } = require('../controllers/ProjectionController');
+const { getProjection, listProjections } = require('../controllers/ProjectionController');
 
 const router = express.Router();
 
-router.all('*', projectionPlaceholder);
+router.get('/', listProjections);
+router.get('/:id', getProjection);
 
 module.exports = router;

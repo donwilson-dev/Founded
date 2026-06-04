@@ -1,8 +1,9 @@
 const express = require('express');
-const { scenarioPlaceholder } = require('../controllers/ScenarioController');
+const { getScenario, listScenarios } = require('../controllers/ScenarioController');
 
 const router = express.Router();
 
-router.all('*', scenarioPlaceholder);
+router.get('/', listScenarios);
+router.get('/:id', getScenario);
 
 module.exports = router;
