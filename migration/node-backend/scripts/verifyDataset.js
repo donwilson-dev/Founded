@@ -8,6 +8,14 @@ const InterestRate = require('../src/models/InterestRate');
 const SavedProjection = require('../src/models/SavedProjection');
 const { DATASET_VERSION, expectedCounts, relationshipCounts } = require('./datasetV1');
 
+const EXPECTED_COLLECTIONS = [
+  'accountBalances',
+  'debts',
+  'incomeSources',
+  'interestRates',
+  'savedProjections',
+];
+
 async function countDocuments() {
   return {
     accountBalances: await Account.countDocuments(),
@@ -53,6 +61,98 @@ async function verifyRelationships() {
     { $match: { 'debt.debt_type': 'other' } },
     { $count: 'count' },
   ]);
+  const orphanIncomeAccountReferences = await Income.aggregate([
+    { $match: { is_account_transfer: { $ne: true }, account_balance_id: { $ne: null } } },
+    {
+      $lookup: {
+        from: 'accountBalances',
+        localField: 'account_balance_id',
+        foreignField: '_id',
+        as: 'account',
+      },
+    },
+    { $match: { account: { $size: 0 } } },
+    { $count: 'count' },
+  ]);
+  const orphanTransferFromAccountReferences = await Income.aggregate([
+    { $match: { is_account_transfer: true, from_account_id: { $ne: null } } },
+    {
+      $lookup: {
+        from: 'accountBalances',
+        localField: 'from_account_id',
+        foreignField: '_id',
+        as: 'account',
+      },
+    },
+    { $match: { account: { $size: 0 } } },
+    { $count: 'count' },
+  ]);
+  const orphanTransferToAccountReferences = await Income.aggregate([
+    { $match: { is_account_transfer: true, to_account_id: { $ne: null } } },
+    {
+      $lookup: {
+        from: 'accountBalances',
+        localField: 'to_account_id',
+        foreignField: '_id',
+        as: 'account',
+      },
+    },
+    { $match: { account: { $size: 0 } } },
+    { $count: 'count' },
+  ]);
+  const orphanDebtAccountReferences = await Debt.aggregate([
+    { $match: { account_balance_id: { $ne: null } } },
+    {
+      $lookup: {
+        from: 'accountBalances',
+        localField: 'account_balance_id',
+        foreignField: '_id',
+        as: 'account',
+      },
+    },
+    { $match: { account: { $size: 0 } } },
+    { $count: 'count' },
+  ]);
+  const orphanInterestRateDebtReferences = await InterestRate.aggregate([
+    { $match: { debt_id: { $ne: null } } },
+    {
+      $lookup: {
+        from: 'debts',
+        localField: 'debt_id',
+        foreignField: '_id',
+        as: 'debt',
+      },
+    },
+    { $match: { debt: { $size: 0 } } },
+    { $count: 'count' },
+  ]);
+  const missingScenarioBaselineReferences = await SavedProjection.countDocuments({
+    projection_type: 'scenario',
+    $or: [
+      { 'assumptions_snapshot.baseline_projection_id': { $exists: false } },
+      { 'assumptions_snapshot.baseline_projection_id': null },
+      { 'assumptions_snapshot.baseline_projection_legacy_id': { $exists: false } },
+      { 'assumptions_snapshot.baseline_projection_legacy_id': null },
+    ],
+  });
+  const orphanScenarioBaselineReferences = await SavedProjection.aggregate([
+    {
+      $match: {
+        projection_type: 'scenario',
+        'assumptions_snapshot.baseline_projection_id': { $ne: null },
+      },
+    },
+    {
+      $lookup: {
+        from: 'savedProjections',
+        localField: 'assumptions_snapshot.baseline_projection_id',
+        foreignField: '_id',
+        as: 'baselineProjection',
+      },
+    },
+    { $match: { baselineProjection: { $size: 0 } } },
+    { $count: 'count' },
+  ]);
 
   return {
     missingIncomeAccounts,
@@ -60,6 +160,24 @@ async function verifyRelationships() {
     missingDebtAccounts,
     missingInterestRateDebtRefs,
     otherDebtsWithInterestRates: otherDebtsWithInterestRates[0]?.count || 0,
+    orphanIncomeAccountReferences: orphanIncomeAccountReferences[0]?.count || 0,
+    orphanTransferFromAccountReferences: orphanTransferFromAccountReferences[0]?.count || 0,
+    orphanTransferToAccountReferences: orphanTransferToAccountReferences[0]?.count || 0,
+    orphanDebtAccountReferences: orphanDebtAccountReferences[0]?.count || 0,
+    orphanInterestRateDebtReferences: orphanInterestRateDebtReferences[0]?.count || 0,
+    missingScenarioBaselineReferences,
+    orphanScenarioBaselineReferences: orphanScenarioBaselineReferences[0]?.count || 0,
+  };
+}
+
+async function verifyCollectionInventory() {
+  const collections = await mongoose.connection.db.listCollections().toArray();
+  const collectionNames = collections.map((collection) => collection.name).sort();
+
+  return {
+    collectionNames,
+    missingCollections: EXPECTED_COLLECTIONS.filter((name) => !collectionNames.includes(name)),
+    unexpectedCollections: collectionNames.filter((name) => !EXPECTED_COLLECTIONS.includes(name)),
   };
 }
 
@@ -122,22 +240,26 @@ async function main() {
 
   try {
     const actualCounts = await countDocuments();
+    const collectionInventory = await verifyCollectionInventory();
     const countComparison = compareCounts(actualCounts, expectedCounts());
     const relationships = await verifyRelationships();
     const requiredFields = await verifyRequiredFields();
     const countsMatch = countComparison.every((result) => result.matches);
+    const inventoryPass = collectionInventory.missingCollections.length === 0
+      && collectionInventory.unexpectedCollections.length === 0;
     const relationshipsPass = Object.values(relationships).every((count) => count === 0);
     const requiredFieldsPass = Object.values(requiredFields).every((count) => count === 0);
 
     console.log(JSON.stringify({
       datasetVersion: DATASET_VERSION,
-      status: countsMatch && relationshipsPass && requiredFieldsPass ? 'verified' : 'mismatch',
+      status: countsMatch && inventoryPass && relationshipsPass && requiredFieldsPass ? 'verified' : 'mismatch',
+      collectionInventory,
       countComparison,
       relationships,
       requiredFields,
     }, null, 2));
 
-    if (!countsMatch || !relationshipsPass || !requiredFieldsPass) {
+    if (!countsMatch || !inventoryPass || !relationshipsPass || !requiredFieldsPass) {
       process.exitCode = 1;
     }
   } finally {

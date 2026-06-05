@@ -421,8 +421,8 @@ function preview() {
     expectedCounts: expectedCounts(),
     relationshipCounts: relationshipCounts(),
     validationAnchors: validationAnchors.map((anchor) => anchor.title),
-    importStatus: 'deferred',
-    importRationale: 'Phase 5 defines the canonical dataset and import framework. MongoDB import is deferred until projection and scenario documents are approved for migration.',
+    importStatus: 'ready',
+    importRationale: 'Dataset Version 1.0 is ready for the Phase 8 MongoDB import and validation workflow.',
   };
 }
 
