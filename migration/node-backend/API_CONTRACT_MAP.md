@@ -1,10 +1,10 @@
 # Founded API Contract Migration Map
 
-Status date: June 4, 2026
+Status date: June 5, 2026
 
 Current source of truth: FastAPI + SQLite.
 
-Express migration status: Phase 7 scenario and saved projection read-only retrieval framework. MongoDB models are connected to GET-only controllers for accounts, income, debts, interest rates, saved projections, and scenarios. Dashboard remains a `501` placeholder. No write behavior, calculations, projection generation, scenario execution, dashboard aggregation, data migration, or data parity validation exists.
+Express migration status: Phase 9A saved projection and scenario payload migration. MongoDB models are connected to GET-only controllers for accounts, income, debts, interest rates, saved projections, and scenarios. Saved projection and scenario `generated_rows`, `assumptions_snapshot`, and metadata are migrated from FastAPI + SQLite and validated for read-path payload parity. Dashboard remains a `501` placeholder. No write behavior, calculations, projection generation, scenario execution, or dashboard aggregation exists.
 
 Allowed statuses:
 
@@ -55,7 +55,7 @@ Allowed parity levels:
 | `POST /scenario/generate` | No Express route in Phase 7 | Deferred scenario engine migration | Not Started | None | Scenario generation and merge logic are not implemented. |
 | `POST /scenario/save` | No Express route in Phase 7 | Future write route migration | Not Started | None | Scenario save behavior is not implemented. |
 | `GET /scenario/:id` | `GET /scenarios/:id` via `src/routes/scenarios.js` / `ScenarioController` | Phase 7 read-only retrieval framework | Retrieval Implemented | Contract | Express uses the plural route group and retrieves stored scenario documents only. Scenario values are never applied or recalculated. |
-| Scenario projection subset | `GET /scenarios` via `src/routes/scenarios.js` / `ScenarioController` | Phase 7 read-only retrieval framework | Retrieval Implemented | Contract | GET-only route returns stored saved projection documents where `projection_type` is `scenario`. Data parity is not claimed. |
+| Scenario projection subset | `GET /scenarios` via `src/routes/scenarios.js` / `ScenarioController` | Phase 9A payload migration | Validated | Validated | GET-only route returns stored saved projection documents where `projection_type` is `scenario`. Stored scenario payloads are migrated from FastAPI + SQLite and validated for `generated_rows`, `assumptions_snapshot`, and metadata parity. |
 | `POST /dashboard/:id/summary` | `src/routes/dashboard.js` / `DashboardController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no dashboard summary aggregation is migrated. |
 | `GET /dashboard/:id/charts` | `src/routes/dashboard.js` / `DashboardController` | Phase 6 contract scaffold | Scaffolded | None | Route group placeholder returns `501`; no chart aggregation is migrated. |
 
@@ -163,7 +163,7 @@ Differences and deferred items:
 - Numeric `id` response adaptation is deferred.
 - List response summary shaping is deferred; Phase 7 returns stored documents only.
 - Stored `assumptions_snapshot` and `generated_rows` are returned as stored and are never regenerated, refreshed, or recalculated.
-- Projection generation, generate-and-save, save, delete, data parity, and financial validation remain unimplemented.
+- Projection generation, generate-and-save, save, delete, and financial validation remain unimplemented. Stored saved projection payload data parity is validated after Phase 9A migration.
 
 ### Scenarios
 
@@ -183,7 +183,7 @@ Differences and deferred items:
 - Express uses plural `/scenarios` route grouping for the migration backend.
 - Express documents may include MongoDB `_id`.
 - Numeric `id` response adaptation is deferred.
-- Scenario generation, scenario save, scenario application, scenario impact calculation, data parity, and financial validation remain unimplemented.
+- Scenario generation, scenario save, scenario application, scenario impact calculation, and financial validation remain unimplemented. Stored scenario payload data parity is validated after Phase 9A migration.
 - Stored scenario `assumptions_snapshot` and `generated_rows` are returned as stored and are never recomputed.
 
 ## Phase 7 Data Availability Strategy

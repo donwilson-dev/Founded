@@ -8,10 +8,11 @@ const scenarioSchema = new mongoose.Schema(
     notes: { type: String },
     assumptions_snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
     generated_rows: { type: [mongoose.Schema.Types.Mixed], required: true, default: [] },
+    created_at: { type: String },
+    updated_at: { type: String },
   },
   {
     collection: 'savedProjections',
-    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   },
 );
 

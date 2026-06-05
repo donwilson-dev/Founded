@@ -9,7 +9,10 @@
     "dev": "nodemon server.js",
     "dataset:preview": "node scripts/importDataset.js preview",
     "dataset:import": "node scripts/importDataset.js import",
-    "dataset:verify": "node scripts/verifyDataset.js"
+    "dataset:verify": "node scripts/verifyDataset.js",
+    "projection-payloads:preview": "node scripts/migrateProjectionPayloads.js preview",
+    "projection-payloads:migrate": "node scripts/migrateProjectionPayloads.js migrate",
+    "projection-payloads:verify": "node scripts/verifyProjectionPayloads.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

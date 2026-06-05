@@ -28,6 +28,7 @@ async function countDocuments() {
 }
 
 async function verifyRelationships() {
+  const scenarioBaselineRelationships = await verifyScenarioBaselineRelationships();
   const missingIncomeAccounts = await Income.countDocuments({
     is_account_transfer: { $ne: true },
     $or: [{ account_balance_id: { $exists: false } }, { account_balance_id: null }],
@@ -126,34 +127,6 @@ async function verifyRelationships() {
     { $match: { debt: { $size: 0 } } },
     { $count: 'count' },
   ]);
-  const missingScenarioBaselineReferences = await SavedProjection.countDocuments({
-    projection_type: 'scenario',
-    $or: [
-      { 'assumptions_snapshot.baseline_projection_id': { $exists: false } },
-      { 'assumptions_snapshot.baseline_projection_id': null },
-      { 'assumptions_snapshot.baseline_projection_legacy_id': { $exists: false } },
-      { 'assumptions_snapshot.baseline_projection_legacy_id': null },
-    ],
-  });
-  const orphanScenarioBaselineReferences = await SavedProjection.aggregate([
-    {
-      $match: {
-        projection_type: 'scenario',
-        'assumptions_snapshot.baseline_projection_id': { $ne: null },
-      },
-    },
-    {
-      $lookup: {
-        from: 'savedProjections',
-        localField: 'assumptions_snapshot.baseline_projection_id',
-        foreignField: '_id',
-        as: 'baselineProjection',
-      },
-    },
-    { $match: { baselineProjection: { $size: 0 } } },
-    { $count: 'count' },
-  ]);
-
   return {
     missingIncomeAccounts,
     missingTransferAccounts,
@@ -165,8 +138,44 @@ async function verifyRelationships() {
     orphanTransferToAccountReferences: orphanTransferToAccountReferences[0]?.count || 0,
     orphanDebtAccountReferences: orphanDebtAccountReferences[0]?.count || 0,
     orphanInterestRateDebtReferences: orphanInterestRateDebtReferences[0]?.count || 0,
+    ...scenarioBaselineRelationships,
+  };
+}
+
+async function verifyScenarioBaselineRelationships() {
+  const scenarios = await SavedProjection.find({ projection_type: 'scenario' }).lean();
+  const baselines = await SavedProjection.find({ projection_type: 'baseline' }).lean();
+  const baselineLegacyIds = new Set(baselines.map((projection) => Number(projection.legacyId)));
+  const baselineObjectIds = new Set(baselines.map((projection) => String(projection._id)));
+
+  let missingScenarioBaselineReferences = 0;
+  let orphanScenarioBaselineReferences = 0;
+
+  for (const scenario of scenarios) {
+    const assumptions = scenario.assumptions_snapshot || {};
+    const baselineLegacyId = assumptions.baseline_projection_legacy_id
+      ?? (Number.isInteger(assumptions.baseline_projection_id) ? assumptions.baseline_projection_id : null);
+    const baselineObjectId = assumptions.baseline_projection_id ? String(assumptions.baseline_projection_id) : null;
+
+    if (baselineLegacyId == null && baselineObjectId == null) {
+      missingScenarioBaselineReferences += 1;
+      continue;
+    }
+
+    if (baselineLegacyId != null && baselineLegacyIds.has(Number(baselineLegacyId))) {
+      continue;
+    }
+
+    if (baselineObjectId != null && baselineObjectIds.has(baselineObjectId)) {
+      continue;
+    }
+
+    orphanScenarioBaselineReferences += 1;
+  }
+
+  return {
     missingScenarioBaselineReferences,
-    orphanScenarioBaselineReferences: orphanScenarioBaselineReferences[0]?.count || 0,
+    orphanScenarioBaselineReferences,
   };
 }
 
