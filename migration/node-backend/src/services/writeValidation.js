@@ -64,6 +64,25 @@ async function findAccountForAssignment(value, label, existingAccountIds = new S
   return account;
 }
 
+async function findDebtForRate(value) {
+  if (value === null || value === undefined || value === '') {
+    throw httpError(422, 'debt_id is required.');
+  }
+
+  let query;
+  if (isLegacyIdentifier(value)) {
+    query = { legacyId: Number(value) };
+  } else if (isObjectIdentifier(value)) {
+    query = { _id: value };
+  } else {
+    throw httpError(404, 'Debt not found');
+  }
+
+  const debt = await Debt.findOne(query);
+  if (!debt) throw httpError(404, 'Debt not found');
+  return debt;
+}
+
 async function nextLegacyId(Model) {
   const latest = await Model.findOne({ legacyId: { $type: 'number' } }).sort({ legacyId: -1 }).lean();
   return latest?.legacyId ? latest.legacyId + 1 : 1;
@@ -305,12 +324,34 @@ async function debtPayload(payload, existing = null) {
   return values;
 }
 
+async function interestRatePayload(payload, existing = null) {
+  const values = compactUpdates({
+    apr_percentage: numberField(payload, 'apr_percentage', { required: !existing, min: 0 }),
+    start_date: dateField(payload, 'start_date', { required: !existing }),
+    end_date: dateField(payload, 'end_date'),
+    notes: stringField(payload, 'notes', { max: 10000 }),
+  });
+
+  if (!existing) {
+    const debt = await findDebtForRate(payload.debt_id);
+    values.debt_id = debt._id;
+    values.legacy_debt_id = debt.legacyId;
+  }
+
+  const start = values.start_date ?? existing?.start_date;
+  const end = values.end_date ?? existing?.end_date;
+  if (start && end && end < start) throw httpError(422, 'end_date cannot be before start_date');
+
+  return values;
+}
+
 module.exports = {
   accountPayload,
   debtPayload,
   ensureAccountCanBeDeleted,
   findByIdentifier,
   httpError,
+  interestRatePayload,
   incomePayload,
   nextLegacyId,
 };
