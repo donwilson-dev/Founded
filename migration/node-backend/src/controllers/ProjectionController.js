@@ -2,6 +2,15 @@ const mongoose = require('mongoose');
 
 const { getDatabaseStatus } = require('../config/database');
 const SavedProjection = require('../models/SavedProjection');
+const {
+  findByIdentifier,
+  nextLegacyId,
+  savedProjectionPayload,
+} = require('../services/writeValidation');
+
+function nowIso() {
+  return new Date().toISOString();
+}
 
 async function listProjections(_req, res, next) {
   const database = getDatabaseStatus();
@@ -62,7 +71,81 @@ async function getProjection(req, res, next) {
   }
 }
 
+async function saveProjection(req, res, next) {
+  const database = getDatabaseStatus();
+
+  if (database !== 'connected') {
+    res.status(503).json({
+      status: 'database-unavailable',
+      database,
+    });
+    return;
+  }
+
+  try {
+    const payload = savedProjectionPayload(req.body);
+    const timestamp = nowIso();
+    const projection = await SavedProjection.findOne({
+      title: payload.title,
+      projection_type: payload.projection_type,
+    });
+
+    if (projection) {
+      projection.set({
+        notes: payload.notes,
+        assumptions_snapshot: payload.assumptions_snapshot,
+        generated_rows: payload.generated_rows,
+        updated_at: timestamp,
+      });
+      await projection.save();
+      res.json(projection.toObject());
+      return;
+    }
+
+    const created = new SavedProjection({
+      legacyId: await nextLegacyId(SavedProjection),
+      ...payload,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    await created.save();
+    res.json(created.toObject());
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteProjection(req, res, next) {
+  const database = getDatabaseStatus();
+
+  if (database !== 'connected') {
+    res.status(503).json({
+      status: 'database-unavailable',
+      database,
+    });
+    return;
+  }
+
+  try {
+    const projection = await findByIdentifier(SavedProjection, req.params.id, 'Projection');
+    if (!projection) {
+      res.status(404).json({
+        status: 'not-found',
+        message: 'Projection not found',
+      });
+      return;
+    }
+
+    await projection.deleteOne();
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
+  deleteProjection,
   getProjection,
   listProjections,
+  saveProjection,
 };

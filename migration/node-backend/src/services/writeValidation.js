@@ -11,6 +11,7 @@ const ACCOUNT_REFERENCE_MESSAGE =
 const incomeFrequencies = new Set(['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly']);
 const debtTypes = new Set(['credit_card', 'personal_loan', 'vehicle_loan', 'student_loan', 'other']);
 const debtRecurrences = new Set(['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly']);
+const projectionTypes = new Set(['baseline', 'scenario']);
 
 function httpError(statusCode, message) {
   const error = new Error(message);
@@ -345,6 +346,39 @@ async function interestRatePayload(payload, existing = null) {
   return values;
 }
 
+function objectField(payload, field, { required = false } = {}) {
+  if (payload[field] === undefined) {
+    if (required) throw httpError(422, `${field} is required.`);
+    return undefined;
+  }
+  const value = payload[field];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw httpError(422, `${field} must be an object.`);
+  }
+  return value;
+}
+
+function arrayField(payload, field, { required = false } = {}) {
+  if (payload[field] === undefined) {
+    if (required) throw httpError(422, `${field} is required.`);
+    return undefined;
+  }
+  if (!Array.isArray(payload[field])) {
+    throw httpError(422, `${field} must be an array.`);
+  }
+  return payload[field];
+}
+
+function savedProjectionPayload(payload) {
+  return {
+    title: stringField(payload, 'title', { required: true, max: 160 }),
+    projection_type: enumField(payload, 'projection_type', projectionTypes, { required: true }),
+    notes: stringField(payload, 'notes', { max: 10000 }),
+    assumptions_snapshot: objectField(payload, 'assumptions_snapshot', { required: true }),
+    generated_rows: arrayField(payload, 'generated_rows', { required: true }),
+  };
+}
+
 module.exports = {
   accountPayload,
   debtPayload,
@@ -354,4 +388,5 @@ module.exports = {
   interestRatePayload,
   incomePayload,
   nextLegacyId,
+  savedProjectionPayload,
 };

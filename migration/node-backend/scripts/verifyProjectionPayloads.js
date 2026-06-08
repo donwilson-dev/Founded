@@ -3,8 +3,10 @@ require('dotenv').config();
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 const SavedProjection = require('../src/models/SavedProjection');
+const { DATASET_VERSION, savedProjectionAnchors } = require('./datasetV1');
 
 const DEFAULT_FASTAPI_BASE_URL = 'http://127.0.0.1:8000';
+const migrationProjectionLegacyIds = new Set(savedProjectionAnchors.map((projection) => projection.legacyId));
 
 function fastApiBaseUrl() {
   return (process.env.FASTAPI_BASE_URL || process.env.FASTAPI_URL || DEFAULT_FASTAPI_BASE_URL).replace(/\/$/, '');
@@ -29,6 +31,16 @@ async function fetchReferenceProjections(baseUrl = fastApiBaseUrl()) {
   }
 
   return projections;
+}
+
+function splitMigrationScope(projections) {
+  const migrationScoped = projections.filter((projection) => migrationProjectionLegacyIds.has(Number(projection.id)));
+  const excluded = projections.filter((projection) => !migrationProjectionLegacyIds.has(Number(projection.id)));
+  const fastApiLegacyIds = migrationScoped.map((projection) => Number(projection.id));
+  const approvedMissingFromFastApi = [...migrationProjectionLegacyIds]
+    .filter((legacyId) => !fastApiLegacyIds.includes(legacyId));
+
+  return { migrationScoped, excluded, approvedMissingFromFastApi };
 }
 
 function canonicalize(value) {
@@ -92,15 +104,26 @@ function compareProjection(reference, mongoProjection) {
 
 async function legacyIdSummary() {
   const missingLegacyIds = await SavedProjection.countDocuments({
+    legacyId: { $in: [...migrationProjectionLegacyIds] },
     $or: [{ legacyId: { $exists: false } }, { legacyId: null }],
   });
   const duplicateLegacyIds = await SavedProjection.aggregate([
+    { $match: { legacyId: { $in: [...migrationProjectionLegacyIds] } } },
     { $group: { _id: '$legacyId', count: { $sum: 1 } } },
     { $match: { _id: { $ne: null }, count: { $gt: 1 } } },
   ]);
+  const approvedLegacyIdsPresent = await SavedProjection.distinct('legacyId', {
+    legacyId: { $in: [...migrationProjectionLegacyIds] },
+  });
+  const approvedMissingFromMongo = [...migrationProjectionLegacyIds]
+    .filter((legacyId) => !approvedLegacyIdsPresent.map(Number).includes(legacyId));
 
   return {
-    records: await SavedProjection.countDocuments(),
+    approvedMigrationRecords: await SavedProjection.countDocuments({
+      legacyId: { $in: [...migrationProjectionLegacyIds] },
+    }),
+    approvedLegacyIds: [...migrationProjectionLegacyIds],
+    approvedMissingFromMongo,
     missingLegacyIds,
     duplicateLegacyIds: duplicateLegacyIds.length,
   };
@@ -111,25 +134,47 @@ async function main() {
     throw new Error('MONGODB_URI is required for projection payload verification.');
   }
 
-  const referenceProjections = await fetchReferenceProjections();
+  const allReferenceProjections = await fetchReferenceProjections();
+  const {
+    migrationScoped: referenceProjections,
+    excluded: excludedReferenceProjections,
+    approvedMissingFromFastApi,
+  } = splitMigrationScope(allReferenceProjections);
 
   await mongoose.connect(process.env.MONGODB_URI, {
     serverSelectionTimeoutMS: 5000,
   });
 
   try {
-    const mongoProjections = await SavedProjection.find().lean();
+    const mongoProjections = await SavedProjection.find({
+      legacyId: { $in: [...migrationProjectionLegacyIds] },
+    }).lean();
     const mongoByLegacyId = new Map(mongoProjections.map((projection) => [Number(projection.legacyId), projection]));
     const comparisons = referenceProjections.map((projection) => (
       compareProjection(projection, mongoByLegacyId.get(Number(projection.id)))
     ));
     const legacyIds = await legacyIdSummary();
     const payloadsPass = comparisons.every((comparison) => comparison.result === 'PASS');
-    const legacyIdsPass = legacyIds.missingLegacyIds === 0 && legacyIds.duplicateLegacyIds === 0;
+    const legacyIdsPass = legacyIds.missingLegacyIds === 0
+      && legacyIds.duplicateLegacyIds === 0
+      && legacyIds.approvedMissingFromMongo.length === 0
+      && approvedMissingFromFastApi.length === 0;
 
     console.log(JSON.stringify({
       fastApiBaseUrl: fastApiBaseUrl(),
       status: payloadsPass && legacyIdsPass ? 'verified' : 'mismatch',
+      datasetVersion: DATASET_VERSION,
+      migrationScope: {
+        selector: 'Dataset Version 1.0 saved projection legacy IDs',
+        approvedLegacyIds: [...migrationProjectionLegacyIds],
+        approvedMissingFromFastApi,
+        excludedReferenceProjections: excludedReferenceProjections.map((projection) => ({
+          legacyId: projection.id,
+          title: projection.title,
+          projection_type: projection.projection_type,
+          reason: 'outside Dataset Version 1.0 migration scope',
+        })),
+      },
       projectionCount: {
         fastapi: referenceProjections.length,
         mongo: mongoProjections.length,
