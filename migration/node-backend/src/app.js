@@ -10,6 +10,7 @@ const healthRouter = require('./routes/health');
 const incomeRoutes = require('./routes/income');
 const interestRateRoutes = require('./routes/interestRates');
 const projectionRoutes = require('./routes/projections');
+const scenarioBridgeRoutes = require('./routes/scenario');
 const scenarioRoutes = require('./routes/scenarios');
 const { errorHandler } = require('./middleware/errorHandler');
 const { notFound } = require('./middleware/notFound');
@@ -28,6 +29,7 @@ function createApp() {
   app.use('/income-sources', incomeRoutes);
   app.use('/interest-rates', interestRateRoutes);
   app.use('/projections', projectionRoutes);
+  app.use('/scenario', scenarioBridgeRoutes);
   app.use('/scenarios', scenarioRoutes);
 
   app.use(notFound);

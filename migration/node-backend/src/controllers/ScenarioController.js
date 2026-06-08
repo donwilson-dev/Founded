@@ -2,6 +2,31 @@ const mongoose = require('mongoose');
 
 const { getDatabaseStatus } = require('../config/database');
 const Scenario = require('../models/Scenario');
+const { forwardFastApiResponse } = require('../services/calculationBridge');
+
+async function generateScenario(req, res, next) {
+  try {
+    await forwardFastApiResponse(res, {
+      method: 'POST',
+      path: '/scenario/generate',
+      body: req.body,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function saveScenario(req, res, next) {
+  try {
+    await forwardFastApiResponse(res, {
+      method: 'POST',
+      path: '/scenario/save',
+      body: req.body,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 async function listScenarios(_req, res, next) {
   const database = getDatabaseStatus();
@@ -65,6 +90,8 @@ async function getScenario(req, res, next) {
 }
 
 module.exports = {
+  generateScenario,
   getScenario,
   listScenarios,
+  saveScenario,
 };

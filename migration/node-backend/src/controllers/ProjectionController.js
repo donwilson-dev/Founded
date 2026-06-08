@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const { getDatabaseStatus } = require('../config/database');
 const SavedProjection = require('../models/SavedProjection');
+const { forwardFastApiResponse } = require('../services/calculationBridge');
 const {
   findByIdentifier,
   nextLegacyId,
@@ -10,6 +11,31 @@ const {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function generateBaselineProjection(req, res, next) {
+  try {
+    await forwardFastApiResponse(res, {
+      method: 'POST',
+      path: '/projections/baseline/generate',
+      body: req.body,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function generateAndSaveBaselineProjection(req, res, next) {
+  try {
+    await forwardFastApiResponse(res, {
+      method: 'POST',
+      path: '/projections/baseline/generate-and-save',
+      query: req.query,
+      body: req.body,
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 async function listProjections(_req, res, next) {
@@ -145,6 +171,8 @@ async function deleteProjection(req, res, next) {
 
 module.exports = {
   deleteProjection,
+  generateAndSaveBaselineProjection,
+  generateBaselineProjection,
   getProjection,
   listProjections,
   saveProjection,
