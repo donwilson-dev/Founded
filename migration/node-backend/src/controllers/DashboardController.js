@@ -1,7 +1,17 @@
 const { forwardFastApiResponse } = require('../services/calculationBridge');
+const {
+  nativeDashboardCharts,
+  nativeDashboardSummary,
+  useNativeDashboardEngine,
+} = require('../services/dashboardEngineAdapter');
 
 async function getDashboardSummary(req, res, next) {
   try {
+    if (useNativeDashboardEngine()) {
+      res.json(await nativeDashboardSummary(req.params.id));
+      return;
+    }
+
     await forwardFastApiResponse(res, {
       method: 'POST',
       path: `/dashboard/${req.params.id}/summary`,
@@ -14,6 +24,11 @@ async function getDashboardSummary(req, res, next) {
 
 async function getDashboardCharts(req, res, next) {
   try {
+    if (useNativeDashboardEngine()) {
+      res.json(await nativeDashboardCharts(req.params.id));
+      return;
+    }
+
     await forwardFastApiResponse(res, {
       method: 'GET',
       path: `/dashboard/${req.params.id}/charts`,
