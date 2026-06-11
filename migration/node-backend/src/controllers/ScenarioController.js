@@ -3,9 +3,19 @@ const mongoose = require('mongoose');
 const { getDatabaseStatus } = require('../config/database');
 const Scenario = require('../models/Scenario');
 const { forwardFastApiResponse } = require('../services/calculationBridge');
+const {
+  generateNativeScenario,
+  saveNativeScenario,
+  useNativeScenarioEngine,
+} = require('../services/scenarioEngineAdapter');
 
 async function generateScenario(req, res, next) {
   try {
+    if (useNativeScenarioEngine()) {
+      res.json(await generateNativeScenario(req.body));
+      return;
+    }
+
     await forwardFastApiResponse(res, {
       method: 'POST',
       path: '/scenario/generate',
@@ -18,6 +28,11 @@ async function generateScenario(req, res, next) {
 
 async function saveScenario(req, res, next) {
   try {
+    if (useNativeScenarioEngine()) {
+      res.json(await saveNativeScenario(req.body));
+      return;
+    }
+
     await forwardFastApiResponse(res, {
       method: 'POST',
       path: '/scenario/save',
