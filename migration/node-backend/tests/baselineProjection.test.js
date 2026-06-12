@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const baseline = require('../src/services/calculations/baselineProjection');
+const baselineAdapter = require('../src/services/baselineEngineAdapter');
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const pythonExe = path.join(repoRoot, '.venv', 'Scripts', 'python.exe');
@@ -234,4 +235,135 @@ test('native baseline projection matches FastAPI disabled extended payoff mode',
   ];
 
   assertParity(cases);
+});
+
+test('baseline engine adapter normalizes Mongo documents into calculation payloads', () => {
+  assert.deepEqual(
+    baselineAdapter.normalizedAccount({
+      _id: 'account-object',
+      legacyId: 10,
+      name: 'Checking',
+      owner: 'Alex',
+      account_type: 'Checking',
+      amount: 100,
+      date: '2026-01-15',
+      active: true,
+    }),
+    {
+      id: 10,
+      name: 'Checking',
+      owner: 'Alex',
+      account_type: 'Checking',
+      amount: 100,
+      date: '2026-01-15',
+      notes: null,
+      active: true,
+    },
+  );
+
+  assert.deepEqual(
+    baselineAdapter.normalizedIncome({
+      _id: 'income-object',
+      legacyId: 20,
+      legacy_account_balance_id: 10,
+      legacy_from_account_id: 11,
+      legacy_to_account_id: 12,
+      is_account_transfer: true,
+      label: 'Transfer',
+      amount: 50,
+      start_date: '2026-01-01',
+      frequency: 'monthly',
+    }),
+    {
+      id: 20,
+      account_balance_id: 10,
+      is_account_transfer: true,
+      from_account_id: 11,
+      to_account_id: 12,
+      label: 'Transfer',
+      amount: 50,
+      start_date: '2026-01-01',
+      end_date: null,
+      frequency: 'monthly',
+      notes: null,
+      active: true,
+    },
+  );
+
+  assert.deepEqual(
+    baselineAdapter.normalizedDebt({
+      _id: 'debt-object',
+      legacyId: 30,
+      legacy_account_balance_id: 10,
+      name: 'Card',
+      debt_type: 'credit_card',
+      starting_balance: 1000,
+      current_balance: 900,
+      minimum_monthly_payment: 100,
+      planned_extra_payment: 25,
+      start_date: '2026-01-01',
+      active: true,
+    }),
+    {
+      id: 30,
+      account_balance_id: 10,
+      name: 'Card',
+      debt_type: 'credit_card',
+      starting_balance: 1000,
+      current_balance: 900,
+      minimum_monthly_payment: 100,
+      planned_extra_payment: 25,
+      recurrence: null,
+      payment_due_day: null,
+      payment_date: null,
+      start_date: '2026-01-01',
+      payoff_target_date: null,
+      priority_number: null,
+      active: true,
+      notes: null,
+    },
+  );
+
+  assert.deepEqual(
+    baselineAdapter.normalizedInterestRate({
+      _id: 'rate-object',
+      legacyId: 40,
+      legacy_debt_id: 30,
+      apr_percentage: 12,
+      start_date: '2026-01-01',
+    }),
+    {
+      id: 40,
+      debt_id: 30,
+      apr_percentage: 12,
+      start_date: '2026-01-01',
+      end_date: null,
+      notes: null,
+    },
+  );
+});
+
+test('baseline engine adapter validates projection request defaults and ranges', () => {
+  assert.deepEqual(
+    baselineAdapter.validatedProjectionPayload({
+      start_month: '2026-01-20',
+      end_month: '2026-03-31',
+      account_balance_ids: [1],
+      income_source_ids: [2],
+      debt_ids: [3],
+    }),
+    {
+      startMonth: '2026-01-01',
+      months: null,
+      endMonth: '2026-03-01',
+      accountBalanceIds: [1],
+      incomeSourceIds: [2],
+      debtIds: [3],
+    },
+  );
+
+  assert.throws(
+    () => baselineAdapter.validatedProjectionPayload({ start_month: '2026-01-01', months: 301 }),
+    /months must be between 1 and 300/,
+  );
 });

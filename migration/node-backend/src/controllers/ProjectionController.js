@@ -4,6 +4,11 @@ const { getDatabaseStatus } = require('../config/database');
 const SavedProjection = require('../models/SavedProjection');
 const { forwardFastApiResponse } = require('../services/calculationBridge');
 const {
+  generateAndSaveNativeBaseline,
+  generateNativeBaseline,
+  useNativeBaselineEngine,
+} = require('../services/baselineEngineAdapter');
+const {
   findByIdentifier,
   nextLegacyId,
   savedProjectionPayload,
@@ -13,8 +18,21 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function projectionResponse(projection) {
+  if (!projection) return projection;
+  return {
+    ...projection,
+    id: projection.legacyId ?? String(projection._id),
+  };
+}
+
 async function generateBaselineProjection(req, res, next) {
   try {
+    if (useNativeBaselineEngine()) {
+      res.json(await generateNativeBaseline(req.body));
+      return;
+    }
+
     await forwardFastApiResponse(res, {
       method: 'POST',
       path: '/projections/baseline/generate',
@@ -27,6 +45,11 @@ async function generateBaselineProjection(req, res, next) {
 
 async function generateAndSaveBaselineProjection(req, res, next) {
   try {
+    if (useNativeBaselineEngine()) {
+      res.json(await generateAndSaveNativeBaseline(req.body, req.query));
+      return;
+    }
+
     await forwardFastApiResponse(res, {
       method: 'POST',
       path: '/projections/baseline/generate-and-save',
@@ -51,7 +74,7 @@ async function listProjections(_req, res, next) {
 
   try {
     const projections = await SavedProjection.find().sort({ updated_at: -1, legacyId: -1 }).lean();
-    res.json(projections);
+    res.json(projections.map(projectionResponse));
   } catch (error) {
     next(error);
   }
@@ -91,7 +114,7 @@ async function getProjection(req, res, next) {
       return;
     }
 
-    res.json(projection);
+    res.json(projectionResponse(projection));
   } catch (error) {
     next(error);
   }
@@ -124,7 +147,7 @@ async function saveProjection(req, res, next) {
         updated_at: timestamp,
       });
       await projection.save();
-      res.json(projection.toObject());
+      res.json(projectionResponse(projection.toObject()));
       return;
     }
 
@@ -135,7 +158,7 @@ async function saveProjection(req, res, next) {
       updated_at: timestamp,
     });
     await created.save();
-    res.json(created.toObject());
+    res.json(projectionResponse(created.toObject()));
   } catch (error) {
     next(error);
   }
