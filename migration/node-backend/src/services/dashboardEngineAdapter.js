@@ -4,14 +4,6 @@ const { getDatabaseStatus } = require('../config/database');
 const SavedProjection = require('../models/SavedProjection');
 const { dashboardSummary } = require('./calculations/dashboard');
 
-function dashboardEngineMode() {
-  return (process.env.FOUNDED_DASHBOARD_ENGINE || process.env.DASHBOARD_ENGINE || 'bridge').toLowerCase();
-}
-
-function useNativeDashboardEngine() {
-  return dashboardEngineMode() === 'native';
-}
-
 function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -53,8 +45,6 @@ async function nativeDashboardCharts(id) {
 }
 
 module.exports = {
-  dashboardEngineMode,
   nativeDashboardCharts,
   nativeDashboardSummary,
-  useNativeDashboardEngine,
 };

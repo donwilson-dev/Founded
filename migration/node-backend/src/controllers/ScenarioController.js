@@ -2,25 +2,22 @@ const mongoose = require('mongoose');
 
 const { getDatabaseStatus } = require('../config/database');
 const Scenario = require('../models/Scenario');
-const { forwardFastApiResponse } = require('../services/calculationBridge');
 const {
   generateNativeScenario,
   saveNativeScenario,
-  useNativeScenarioEngine,
 } = require('../services/scenarioEngineAdapter');
+
+function scenarioResponse(scenario) {
+  if (!scenario) return scenario;
+  return {
+    ...scenario,
+    id: scenario.legacyId ?? String(scenario._id),
+  };
+}
 
 async function generateScenario(req, res, next) {
   try {
-    if (useNativeScenarioEngine()) {
-      res.json(await generateNativeScenario(req.body));
-      return;
-    }
-
-    await forwardFastApiResponse(res, {
-      method: 'POST',
-      path: '/scenario/generate',
-      body: req.body,
-    });
+    res.json(await generateNativeScenario(req.body));
   } catch (error) {
     next(error);
   }
@@ -28,16 +25,7 @@ async function generateScenario(req, res, next) {
 
 async function saveScenario(req, res, next) {
   try {
-    if (useNativeScenarioEngine()) {
-      res.json(await saveNativeScenario(req.body));
-      return;
-    }
-
-    await forwardFastApiResponse(res, {
-      method: 'POST',
-      path: '/scenario/save',
-      body: req.body,
-    });
+    res.json(scenarioResponse(await saveNativeScenario(req.body)));
   } catch (error) {
     next(error);
   }
@@ -58,7 +46,7 @@ async function listScenarios(_req, res, next) {
     const scenarios = await Scenario.find({ projection_type: 'scenario' })
       .sort({ updated_at: -1, legacyId: -1 })
       .lean();
-    res.json(scenarios);
+    res.json(scenarios.map(scenarioResponse));
   } catch (error) {
     next(error);
   }
@@ -98,7 +86,7 @@ async function getScenario(req, res, next) {
       return;
     }
 
-    res.json(scenario);
+    res.json(scenarioResponse(scenario));
   } catch (error) {
     next(error);
   }

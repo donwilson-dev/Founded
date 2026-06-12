@@ -12,14 +12,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function scenarioEngineMode() {
-  return (process.env.FOUNDED_SCENARIO_ENGINE || process.env.SCENARIO_ENGINE || 'bridge').toLowerCase();
-}
-
-function useNativeScenarioEngine() {
-  return scenarioEngineMode() === 'native';
-}
-
 function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -117,6 +109,4 @@ module.exports = {
   generateNativeScenario,
   preparedBaselineProjection,
   saveNativeScenario,
-  scenarioEngineMode,
-  useNativeScenarioEngine,
 };

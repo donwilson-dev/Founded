@@ -2,15 +2,15 @@
 
 ## Current Migration Phase
 
-Phase 8A: Local MongoDB environment setup and validation.
+Phase 14: FastAPI calculation bridge retired.
 
-This workspace contains only the experimental Node.js / Express infrastructure layer for the Founded migration. It does not contain migrated business logic, projection logic, calculation logic, authentication, exports, reports, or frontend rewiring.
+This workspace contains the Node.js / Express backend used for the Founded migration. Baseline, scenario, and dashboard calculation routes now execute through native Node services backed by MongoDB.
 
 ## Current Source of Truth
 
-FastAPI + SQLite remains the authoritative Founded implementation.
+MongoDB is the authoritative Founded data source for the migrated backend.
 
-The Express backend in this folder is experimental migration infrastructure only. It must be safe to stop or delete without affecting the current FastAPI backend, React frontend, SQLite data, projection calculations, saved projections, dashboard behavior, or existing user workflows.
+The former FastAPI calculation bridge has been retired from active Node execution paths. FastAPI application files may still exist outside this backend as historical/reference artifacts, but calculation routes in this backend no longer depend on FastAPI.
 
 ## Completed Phases
 
@@ -36,14 +36,9 @@ The Express backend in this folder is experimental migration infrastructure only
 
 ## Remaining Phases
 
-- Future Phase 3+: endpoint-by-endpoint route migration.
-- Phase 4: direct JavaScript calculation engine port.
-- Phase 5: projection engine port.
-- Phase 6: frontend API rewire only if required.
-- Phase 7: demo dataset migration.
-- Phase 8: migration validation.
-- Phase 9: gap remediation.
-- Phase 10: release readiness review.
+- Native-only visual verification.
+- Migration completion review.
+- Production packaging and deployment planning.
 
 ## Startup
 
@@ -87,31 +82,28 @@ If `MONGODB_URI` is configured and reachable, `database` reports `connected`. If
 
 ## MongoDB Integration Status
 
-MongoDB support is infrastructure-only in this phase.
+MongoDB is the active data-access layer for the migrated backend.
 
 What exists:
 
 - `mongoose` is installed as the single MongoDB data-access strategy.
 - `src/config/database.js` provides optional connect/disconnect helpers.
 - `GET /health` reports safe database status.
-- `src/models/` contains initial Mongoose schema definitions.
+- `src/models/` contains Mongoose schema definitions for migrated records.
+- `src/controllers/` and `src/routes/` expose migrated CRUD, projection, scenario, and dashboard routes.
+- `src/services/calculations/` contains native calculation services for baseline, scenario, dashboard, account projection, payoff metrics, recurrence, and primitives.
 
-What does not exist:
+What remains out of scope:
 
-- No migrated CRUD routes.
-- No controllers.
-- No business services.
-- No calculation logic.
-- No projection logic.
-- No demo data migration.
-- No MongoDB seed process.
-- No frontend rewiring.
+- Authentication.
+- Production packaging.
+- Deployment-specific configuration.
 
-The models are schema definitions only. They are not connected to routes, they do not contain business logic, and they do not contain calculation logic.
+FastAPI parity references in tests and audit documents are retained as historical validation context.
 
 ## Local MongoDB Community Server Validation Setup
 
-Phase 8A-B uses local MongoDB Community Server for connection validation only. FastAPI + SQLite remains the source of truth, and no dataset import or collection population is part of this phase.
+Phase 14 uses local MongoDB Community Server as the authoritative migrated datastore for validation.
 
 Observed local validation environment:
 
@@ -304,27 +296,23 @@ The canonical dataset is based on the approved synthetic demo dataset and migrat
 
 ## Port Strategy
 
-- FastAPI backend: `8000`
-- Express migration backend: `4000`
+- Node backend: `4000`
 - Vite frontend: `5173`
+- Native visual verification frontend: `5174`
 
-The Express migration backend intentionally uses port `4000` so it can run beside FastAPI and Vite without conflict. CORS currently allows:
+The Node backend uses port `4000`. CORS currently allows:
 
 - `http://127.0.0.1:5173`
 - `http://localhost:5173`
+- `http://127.0.0.1:5174`
+- `http://localhost:5174`
 
-CORS origins may be expanded later during frontend rewire or deployment work. The current React frontend remains connected to FastAPI and is not wired to this Express backend.
+CORS origins may be expanded later during deployment work.
 
 ## Current Limitations
 
-- MongoDB connection is optional and infrastructure-only.
-- No migrated FastAPI routes beyond health.
-- No calculation engine port.
-- No projection engine port.
-- No saved projection behavior.
-- No dashboard behavior.
 - No authentication.
-- Not production-ready.
+- Not yet production-packaged.
 
 ## Future Location Decision
 

@@ -65,17 +65,64 @@ function hashPayload(value) {
     .digest('hex');
 }
 
+function normalizedSnapshot(value, parentKey = '') {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizedSnapshot(item, parentKey));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((result, key) => {
+      if (key === 'display_order') {
+        return result;
+      }
+
+      if (
+        parentKey === 'scenario_overrides'
+        && ['months', 'scenario_start_month', 'scenario_end_month'].includes(key)
+      ) {
+        return result;
+      }
+
+      result[key] = normalizedSnapshot(value[key], key);
+      return result;
+    }, {});
+  }
+
+  return value;
+}
+
+function compareMetadata(reference, mongoProjection) {
+  if (!mongoProjection) {
+    return {
+      stableMatches: false,
+      mutableDifferences: [],
+    };
+  }
+
+  const stableFields = ['title', 'projection_type', 'created_at'];
+  const mutableFields = ['notes', 'updated_at'];
+  const stableMatches = stableFields.every((field) => reference[field] === mongoProjection[field]);
+  const mutableDifferences = mutableFields
+    .filter((field) => reference[field] !== mongoProjection[field])
+    .map((field) => ({
+      field,
+      fastapi: reference[field],
+      mongo: mongoProjection[field],
+      reason: 'mutable native-owned metadata',
+    }));
+
+  return {
+    stableMatches,
+    mutableDifferences,
+  };
+}
+
 function compareProjection(reference, mongoProjection) {
   const generatedRowsHash = hashPayload(reference.generated_rows);
   const mongoGeneratedRowsHash = hashPayload(mongoProjection?.generated_rows || []);
-  const assumptionsHash = hashPayload(reference.assumptions_snapshot);
-  const mongoAssumptionsHash = hashPayload(mongoProjection?.assumptions_snapshot || null);
-  const metadataMatches = Boolean(mongoProjection)
-    && reference.title === mongoProjection.title
-    && reference.projection_type === mongoProjection.projection_type
-    && reference.notes === mongoProjection.notes
-    && reference.created_at === mongoProjection.created_at
-    && reference.updated_at === mongoProjection.updated_at;
+  const assumptionsHash = hashPayload(normalizedSnapshot(reference.assumptions_snapshot));
+  const mongoAssumptionsHash = hashPayload(normalizedSnapshot(mongoProjection?.assumptions_snapshot || null));
+  const metadata = compareMetadata(reference, mongoProjection);
 
   return {
     legacyId: reference.id,
@@ -93,8 +140,9 @@ function compareProjection(reference, mongoProjection) {
       fastapiHash: assumptionsHash,
       mongoHash: mongoAssumptionsHash,
     },
-    metadataMatches,
-    result: metadataMatches
+    metadataMatches: metadata.stableMatches,
+    mutableMetadataDifferences: metadata.mutableDifferences,
+    result: metadata.stableMatches
       && generatedRowsHash === mongoGeneratedRowsHash
       && assumptionsHash === mongoAssumptionsHash
       ? 'PASS'

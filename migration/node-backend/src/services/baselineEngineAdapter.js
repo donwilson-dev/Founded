@@ -7,14 +7,6 @@ const { generateBaselineProjection } = require('./calculations/baselineProjectio
 const { MAX_PROJECTION_MONTHS, formatDate, firstOfMonth, inclusiveMonthCount } = require('./calculations/dateRecurrenceHelpers');
 const { nextLegacyId } = require('./writeValidation');
 
-function baselineEngineMode() {
-  return (process.env.FOUNDED_BASELINE_ENGINE || process.env.BASELINE_ENGINE || 'bridge').toLowerCase();
-}
-
-function useNativeBaselineEngine() {
-  return baselineEngineMode() === 'native';
-}
-
 function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -242,7 +234,6 @@ async function generateAndSaveNativeBaseline(payload = {}, query = {}) {
 }
 
 module.exports = {
-  baselineEngineMode,
   currentFinancialInputs,
   generateAndSaveNativeBaseline,
   generateNativeBaseline,
@@ -250,6 +241,5 @@ module.exports = {
   normalizedDebt,
   normalizedIncome,
   normalizedInterestRate,
-  useNativeBaselineEngine,
   validatedProjectionPayload,
 };

@@ -2,11 +2,9 @@ const mongoose = require('mongoose');
 
 const { getDatabaseStatus } = require('../config/database');
 const SavedProjection = require('../models/SavedProjection');
-const { forwardFastApiResponse } = require('../services/calculationBridge');
 const {
   generateAndSaveNativeBaseline,
   generateNativeBaseline,
-  useNativeBaselineEngine,
 } = require('../services/baselineEngineAdapter');
 const {
   findByIdentifier,
@@ -28,16 +26,7 @@ function projectionResponse(projection) {
 
 async function generateBaselineProjection(req, res, next) {
   try {
-    if (useNativeBaselineEngine()) {
-      res.json(await generateNativeBaseline(req.body));
-      return;
-    }
-
-    await forwardFastApiResponse(res, {
-      method: 'POST',
-      path: '/projections/baseline/generate',
-      body: req.body,
-    });
+    res.json(await generateNativeBaseline(req.body));
   } catch (error) {
     next(error);
   }
@@ -45,17 +34,7 @@ async function generateBaselineProjection(req, res, next) {
 
 async function generateAndSaveBaselineProjection(req, res, next) {
   try {
-    if (useNativeBaselineEngine()) {
-      res.json(await generateAndSaveNativeBaseline(req.body, req.query));
-      return;
-    }
-
-    await forwardFastApiResponse(res, {
-      method: 'POST',
-      path: '/projections/baseline/generate-and-save',
-      query: req.query,
-      body: req.body,
-    });
+    res.json(await generateAndSaveNativeBaseline(req.body, req.query));
   } catch (error) {
     next(error);
   }

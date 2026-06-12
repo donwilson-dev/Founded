@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://127.0.0.1:4000';
 export const MAX_PROJECTION_MONTHS = 300;
 
 async function request(path, options = {}) {
@@ -9,7 +9,7 @@ async function request(path, options = {}) {
       ...options,
     });
   } catch {
-    throw new Error('Unable to reach the Founded backend. Confirm FastAPI is running on port 8000.');
+    throw new Error('Unable to reach the Founded backend. Confirm the Node backend is running on port 4000.');
   }
   if (!response.ok) {
     let detail = `Request failed with ${response.status}`;
