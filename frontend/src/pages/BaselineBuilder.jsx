@@ -285,7 +285,10 @@ export default function BaselineBuilder({ isActive = false }) {
       matches(source.account_balance_id ?? source.accountBalanceId)
       || matches(source.from_account_id ?? source.fromAccountId)
       || matches(source.to_account_id ?? source.toAccountId)
-    )) || debts.some((debt) => matches(debt.account_balance_id ?? debt.accountBalanceId));
+    )) || debts.some((debt) => (
+      matches(debt.legacy_account_balance_id)
+      || matches(debt.account_balance_id ?? debt.accountBalanceId)
+    ));
   }
 
   function focusOpenedForm(ref) {
@@ -385,7 +388,7 @@ export default function BaselineBuilder({ isActive = false }) {
     setEditingDebtId(debt.id);
     setDebtForm({
       name: debt.name || '',
-      accountBalanceId: debt.account_balance_id ?? debt.accountBalanceId ?? '',
+      accountBalanceId: debtAccountSelectionId(debt),
       debtType: debt.debt_type || 'credit_card',
       startingBalance: debt.current_balance ?? '',
       currentBalance: debt.current_balance ?? '',
@@ -474,6 +477,9 @@ export default function BaselineBuilder({ isActive = false }) {
     try {
       await foundedApi.deleteAccountBalance(balance.id);
       setAccountBalances((items) => items.filter((item) => item.id !== balance.id));
+      if (String(editingAccountBalanceId) === String(balance.id)) {
+        cancelAccountBalanceForm();
+      }
       markWorkingBaselineChanged();
       setPendingDeleteRow(null);
       setStatus('Account balance deleted.');
@@ -519,6 +525,9 @@ export default function BaselineBuilder({ isActive = false }) {
     try {
       await foundedApi.deleteIncomeSource(source.id);
       setIncomeSources((items) => items.filter((item) => item.id !== source.id));
+      if (String(editingIncomeId) === String(source.id)) {
+        cancelIncomeForm();
+      }
       markWorkingBaselineChanged();
       setPendingDeleteRow(null);
       setStatus('Income source deleted.');
@@ -603,7 +612,7 @@ export default function BaselineBuilder({ isActive = false }) {
       const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
       await foundedApi.updateDebt(debt.id, toDebtPayload({
         name: debt.name || '',
-        accountBalanceId: debt.account_balance_id ?? debt.accountBalanceId ?? '',
+        accountBalanceId: debtAccountSelectionId(debt),
         debtType: debt.debt_type || 'credit_card',
         startingBalance: currentBalance,
         currentBalance: otherDebt ? debt.current_balance || 0 : currentBalance,
@@ -635,6 +644,9 @@ export default function BaselineBuilder({ isActive = false }) {
     try {
       await foundedApi.deleteDebt(debt.id);
       setDebts((items) => items.filter((item) => item.id !== debt.id));
+      if (String(editingDebtId) === String(debt.id)) {
+        cancelDebtForm();
+      }
       markWorkingBaselineChanged();
       setPendingDeleteRow(null);
       setStatus('Debt deleted.');
@@ -863,7 +875,7 @@ export default function BaselineBuilder({ isActive = false }) {
           <button className="outline-button" onClick={newBaseline} disabled={loading}>+ New</button>
         </div>
         <button className="primary-button" onClick={generateProjection} disabled={loading}>
-          {loading ? 'Working...' : 'Generate Projection'}
+          {loading ? 'Working...' : 'Generate Baseline'}
         </button>
       </section>
 
@@ -1033,7 +1045,7 @@ export default function BaselineBuilder({ isActive = false }) {
         )}
       </section>
 
-      <section className="card data-card" data-baseline-section="debts">
+      <section className="card data-card debts-data-card" data-baseline-section="debts">
         <div className="card-header">
           <h2>Debts</h2>
           <button className="outline-button" onClick={startAddDebt} disabled={loading} title={debts.length >= MAX_DEBTS ? 'Maximum of 25 debts reached.' : undefined}>
@@ -1391,6 +1403,10 @@ function isOtherDebt(formOrDebt) {
 
 function isOneTimeOtherDebt(formOrDebt) {
   return isOtherDebt(formOrDebt) && (formOrDebt?.recurrence || 'monthly') === 'one_time';
+}
+
+function debtAccountSelectionId(debt = {}) {
+  return debt.legacy_account_balance_id ?? debt.account_balance_id ?? debt.accountBalanceId ?? '';
 }
 
 function normalizeDebtFormForType(form) {

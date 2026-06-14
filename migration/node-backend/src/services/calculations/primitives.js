@@ -110,6 +110,37 @@ function paymentLabel(amount) {
   })}/mo`;
 }
 
+function debtIdentity(debt, index = null) {
+  const plainDebt = toPlainObject(debt) || {};
+  if (plainDebt._projection_identity !== null && plainDebt._projection_identity !== undefined) {
+    return plainDebt._projection_identity;
+  }
+  if (plainDebt.id !== null && plainDebt.id !== undefined) {
+    return plainDebt.id;
+  }
+  if (plainDebt.legacyId !== null && plainDebt.legacyId !== undefined) {
+    return plainDebt.legacyId;
+  }
+  if (plainDebt._id !== null && plainDebt._id !== undefined) {
+    return plainDebt._id;
+  }
+  return `position:${index ?? 0}`;
+}
+
+function debtIdentitySuffix(debt, index) {
+  const plainDebt = toPlainObject(debt) || {};
+  if (plainDebt.id !== null && plainDebt.id !== undefined) {
+    return plainDebt.id;
+  }
+  if (plainDebt.legacyId !== null && plainDebt.legacyId !== undefined) {
+    return plainDebt.legacyId;
+  }
+  if (plainDebt._id !== null && plainDebt._id !== undefined) {
+    return plainDebt._id;
+  }
+  return index + 1;
+}
+
 function debtColumnLabels(debts) {
   const nameGroups = new Map();
   const debtList = debts || [];
@@ -127,12 +158,14 @@ function debtColumnLabels(debts) {
 
   debtList.forEach((rawDebt, index) => {
     const debt = toPlainObject(rawDebt);
-    const identity = Object.prototype.hasOwnProperty.call(debt, 'id') ? debt.id : index;
+    const identity = debtIdentity(debt, index);
     const name = String(debt.name || 'Debt').trim() || 'Debt';
     const duplicateGroup = nameGroups.get(name.toLowerCase()) || [];
     let label;
 
-    if (duplicateGroup.length === 1) {
+    if (debt._projection_label) {
+      label = debt._projection_label;
+    } else if (duplicateGroup.length === 1) {
       label = name;
     } else {
       const typeLabel = debtTypeLabel(debt.debt_type);
@@ -144,7 +177,7 @@ function debtColumnLabels(debts) {
     }
 
     if (used.has(label)) {
-      label = `${label} #${identity}`;
+      label = `${label} #${debtIdentitySuffix(debt, index)}`;
     }
 
     labels[identity] = label;
@@ -231,6 +264,7 @@ module.exports = {
   baseActualPayment,
   debtTypeLabel,
   paymentLabel,
+  debtIdentity,
   debtColumnLabels,
   scheduledActualPayment,
   debtPaymentActiveForMonth,

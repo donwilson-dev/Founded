@@ -190,6 +190,42 @@ test('native baseline projection matches FastAPI for duplicate debt labels, APRs
   assertParity(cases);
 });
 
+test('native baseline projection keeps same-name debts without ids in separate balance columns', () => {
+  const result = baseline.generateBaselineProjection(
+    [],
+    [
+      debt({
+        id: undefined,
+        name: 'Duplicate',
+        current_balance: 500,
+        minimum_monthly_payment: 100,
+        actual_monthly_payment: 100,
+      }),
+      debt({
+        id: undefined,
+        name: 'Duplicate',
+        current_balance: 800,
+        minimum_monthly_payment: 100,
+        actual_monthly_payment: 100,
+      }),
+    ],
+    [],
+    '2026-01-01',
+    1,
+    null,
+    [],
+    false,
+  );
+
+  const [row] = result.generated_rows;
+  assert.equal(row['Duplicate (Credit Card - $100/mo)'], 400);
+  assert.equal(row['Duplicate (Credit Card - $100/mo) #2'], 700);
+  assert.equal(row['Duplicate (Credit Card - $100/mo) Payment'], 100);
+  assert.equal(row['Duplicate (Credit Card - $100/mo) #2 Payment'], 100);
+  assert.equal(row['Total Debt Payments'], 200);
+  assert.equal(row['Total Debt'], 1100);
+});
+
 test('native baseline projection matches FastAPI for account transfers and owner cash rows', () => {
   const cases = [
     {

@@ -5,6 +5,19 @@ const Debt = require('../models/Debt');
 const InterestRate = require('../models/InterestRate');
 const { debtPayload, findByIdentifier, httpError, nextLegacyId } = require('../services/writeValidation');
 
+function debtResponse(debt) {
+  if (!debt) return debt;
+  const plain = typeof debt.toObject === 'function' ? debt.toObject() : debt;
+  return {
+    ...plain,
+    id: plain.legacyId ?? String(plain._id),
+  };
+}
+
+function debtListResponse(debts) {
+  return debts.map((debt) => debtResponse(debt));
+}
+
 async function listDebts(_req, res, next) {
   const database = getDatabaseStatus();
 
@@ -18,7 +31,7 @@ async function listDebts(_req, res, next) {
 
   try {
     const debts = await Debt.find().sort({ priority_number: 1, legacyId: 1 }).lean();
-    res.json(debts);
+    res.json(debtListResponse(debts));
   } catch (error) {
     next(error);
   }
@@ -45,7 +58,7 @@ async function createDebt(req, res, next) {
       ...(await debtPayload(req.body)),
     });
     await debt.save();
-    res.status(201).json(debt.toObject());
+    res.status(201).json(debtResponse(debt));
   } catch (error) {
     next(error);
   }
@@ -85,7 +98,7 @@ async function getDebt(req, res, next) {
       return;
     }
 
-    res.json(debt);
+    res.json(debtResponse(debt));
   } catch (error) {
     next(error);
   }
@@ -114,7 +127,7 @@ async function updateDebt(req, res, next) {
 
     debt.set(await debtPayload(req.body, debt));
     await debt.save();
-    res.json(debt.toObject());
+    res.json(debtResponse(debt));
   } catch (error) {
     next(error);
   }

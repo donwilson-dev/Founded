@@ -6,7 +6,7 @@ const {
 } = require('./dateRecurrenceHelpers');
 const { generateAccountProjectionRows } = require('./accountProjection');
 const { generateBaselineProjection, jsonReady } = require('./baselineProjection');
-const { debtColumnLabels, toPlainObject } = require('./primitives');
+const { debtColumnLabels, debtIdentity, toPlainObject } = require('./primitives');
 
 function identityKey(item, naturalKey = null) {
   if (item.id !== null && item.id !== undefined) {
@@ -24,9 +24,17 @@ function identityKey(item, naturalKey = null) {
   return null;
 }
 
+function plainClone(value) {
+  const plainValue = toPlainObject(value);
+  if (!plainValue || typeof plainValue !== 'object') {
+    return plainValue;
+  }
+  return { ...plainValue };
+}
+
 function mergeAssumptionCollection(baselineItems, overrideItems = null, naturalKey = null) {
   const baseline = (baselineItems || []).map(toPlainObject);
-  const overrides = (overrideItems || []).map(toPlainObject);
+  const overrides = (overrideItems || []).map(plainClone);
   const mergedByKey = new Map();
   const orderedKeys = [];
 
@@ -93,7 +101,8 @@ function baselineStartMonth(baselineRows) {
 function applyProjectionLabels(debts) {
   const columnLabels = debtColumnLabels(debts);
   debts.forEach((debt, index) => {
-    const identity = Object.prototype.hasOwnProperty.call(debt, 'id') ? debt.id : index;
+    const identity = debtIdentity(debt, index);
+    debt._projection_identity = identity;
     debt._projection_label = Object.prototype.hasOwnProperty.call(columnLabels, identity)
       ? columnLabels[identity]
       : debt.name || 'Debt';
@@ -129,7 +138,7 @@ function generateScenarioProjection(
   const { items: debts, overrideKeys: overriddenDebtKeys } = mergeAssumptionCollection(
     baselineAssumptions.debts || [],
     debtOverrides,
-    'name',
+    null,
   );
   const { items: rates } = mergeAssumptionCollection(
     baselineAssumptions.interest_rates || [],
@@ -154,7 +163,7 @@ function generateScenarioProjection(
 
   if (balanceSourceRow) {
     for (const debt of debts) {
-      const key = identityKey(debt, 'name');
+      const key = identityKey(debt);
       const balanceKey = debt._projection_label || debt.name;
       if (!overriddenDebtKeys.has(key) && Object.prototype.hasOwnProperty.call(balanceSourceRow, balanceKey)) {
         debt.current_balance = balanceSourceRow[balanceKey];

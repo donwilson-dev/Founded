@@ -311,6 +311,50 @@ test('native scenario projection matches FastAPI debt overrides, new debts, and 
   ]);
 });
 
+test('native scenario projection preserves baseline debt identity when adding a same-name debt', () => {
+  const caseData = baseCase({
+    baseline: {
+      months: 4,
+      debts: [
+        debt({
+          id: 1,
+          name: 'Card',
+          current_balance: 1000,
+          minimum_monthly_payment: 100,
+          actual_monthly_payment: 100,
+        }),
+      ],
+      interest_rates: [],
+    },
+    payload: {
+      scenario_start_month: '2026-03-01',
+      months: 1,
+      debt_overrides: [
+        debt({
+          id: null,
+          name: 'Card',
+          current_balance: 300,
+          minimum_monthly_payment: 50,
+          actual_monthly_payment: 50,
+          priority_number: 2,
+          start_date: '2026-03-01',
+        }),
+      ],
+    },
+  });
+
+  const result = nodeResult({ op: 'generate_scenario_projection', ...caseData });
+  const march = result.generated_rows.find((row) => row.month === '2026-03-01');
+
+  assert.equal(march['Card+'], 700);
+  assert.equal(march['Card Payment+'], 100);
+  assert.equal(march['Card (Credit Card - $50/mo)+'], 250);
+  assert.equal(march['Card (Credit Card - $50/mo) Payment+'], 50);
+  assert.equal(march['Total Debt Payments+'], 150);
+  assert.equal(march['Total Debt+'], 950);
+  assert.equal(Object.prototype.hasOwnProperty.call(march, 'Card (Credit Card - $100/mo)+'), false);
+});
+
 test('native scenario projection matches FastAPI account transfers and other-debt bills', () => {
   assertParity([
     {

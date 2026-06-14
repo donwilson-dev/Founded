@@ -6,6 +6,7 @@ const {
 } = require('./dateRecurrenceHelpers');
 const {
   debtApr,
+  debtIdentity,
   debtPaymentActiveForMonth,
   isTrueDebt,
   monthlyInterest,
@@ -78,9 +79,12 @@ function calculatePayoffMetrics(
 
   const rateData = (interestRates || []).map(toPlainObject);
   const balances = {};
-  for (const debt of ordered) {
-    balances[debt.id] = Number(debt.current_balance || 0);
-  }
+  const debtKeys = new Map();
+  ordered.forEach((debt, index) => {
+    const identity = debtIdentity(debt, index);
+    debtKeys.set(debt, identity);
+    balances[identity] = Number(debt.current_balance || 0);
+  });
 
   const positiveBalanceTotal = Object.values(balances).reduce(
     (total, balance) => total + Math.max(balance, 0),
@@ -108,7 +112,7 @@ function calculatePayoffMetrics(
     }
     const availableExtra = Math.max(lastAvailableCash, 0.0);
     const activeDebts = ordered.filter(
-      (debt) => balances[debt.id] > 0 && debtPaymentActiveForMonth(debt, month),
+      (debt) => balances[debtKeys.get(debt)] > 0 && debtPaymentActiveForMonth(debt, month),
     );
 
     if (activeDebts.length === 0) {
@@ -127,11 +131,11 @@ function calculatePayoffMetrics(
       };
     }
 
-    const targetId = activeDebts[0].id;
+    const targetId = debtKeys.get(activeDebts[0]);
     const paidOffThisMonth = [];
 
     for (const debt of ordered) {
-      const debtId = debt.id;
+      const debtId = debtKeys.get(debt);
       if (balances[debtId] <= 0) {
         continue;
       }

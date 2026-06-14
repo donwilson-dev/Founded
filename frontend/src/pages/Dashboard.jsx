@@ -156,11 +156,15 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     onNavigate('baseline');
   }
 
-  const projectionRows = dashboard?.projection_rows || [];
-  const normalizedProjectionRows = useMemo(() => normalizeProjectionRows(projectionRows), [projectionRows]);
   const summary = dashboard?.summary || {};
   const snapshot = useMemo(() => projectionSnapshot(selectedProjection, summary), [selectedProjection, summary]);
   const hasScenario = Boolean(dashboard?.supports_scenario);
+  const projectionRows = dashboard?.projection_rows || [];
+  const displayProjectionRows = useMemo(
+    () => normalizeDuplicateDebtProjectionRows(projectionRows, selectedProjection, hasScenario),
+    [projectionRows, selectedProjection, hasScenario]
+  );
+  const normalizedProjectionRows = useMemo(() => normalizeProjectionRows(displayProjectionRows), [displayProjectionRows]);
   const ownerOptions = useMemo(() => ownerOptionsFromProjection(selectedProjection), [selectedProjection]);
   const effectiveProjectionOwner = hasScenario ? 'overall' : projectionOwner;
   const ownerSelected = !hasScenario && effectiveProjectionOwner !== 'overall';
@@ -170,8 +174,8 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   );
   const accountSelected = projectionAccount !== 'all';
   const accountProjectionRows = useMemo(
-    () => accountProjectionRowsForSelection(selectedProjection, projectionAccount, hasScenario, projectionRows),
-    [selectedProjection, projectionAccount, hasScenario, projectionRows]
+    () => accountProjectionRowsForSelection(selectedProjection, projectionAccount, hasScenario, displayProjectionRows),
+    [selectedProjection, projectionAccount, hasScenario, displayProjectionRows]
   );
   const accountSummary = useMemo(() => accountSummaryFromRows(accountProjectionRows), [accountProjectionRows]);
   const ownerFilteredProjectionRows = useMemo(() => {
@@ -184,8 +188,8 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     return totalDebtChartRows(sourceRows, hasScenario);
   }, [ownerSelected, ownerFilteredProjectionRows, normalizedProjectionRows, hasScenario]);
   const cashRows = useMemo(
-    () => cashFlowRows(ownerSelected ? ownerFilteredProjectionRows : projectionRows, hasScenario),
-    [ownerSelected, ownerFilteredProjectionRows, projectionRows, hasScenario]
+    () => cashFlowRows(ownerSelected ? ownerFilteredProjectionRows : displayProjectionRows, hasScenario),
+    [ownerSelected, ownerFilteredProjectionRows, displayProjectionRows, hasScenario]
   );
   const pieRows = ownerSelected
     ? debtBreakdownRows(ownerDebtBreakdown(selectedProjection, ownerFilteredProjectionRows, effectiveProjectionOwner, ''))
@@ -196,12 +200,12 @@ export default function Dashboard({ onNavigate, isActive = false }) {
       : debtBreakdownRows(projectionDebtBreakdown(selectedProjection, normalizedProjectionRows, true))
     : [];
   const insights = insightCards(dashboard);
-  const milestones = useMemo(
-    () => ownerSelected
+  const milestones = useMemo(() => {
+    const rawMilestones = ownerSelected
       ? ownerMilestones(dashboard?.datasets?.milestones || [], selectedProjection, effectiveProjectionOwner, false)
-      : dashboard?.datasets?.milestones || milestoneRows(projectionRows, hasScenario),
-    [dashboard, ownerSelected, selectedProjection, effectiveProjectionOwner, projectionRows, hasScenario]
-  );
+      : dashboard?.datasets?.milestones || milestoneRows(displayProjectionRows, hasScenario);
+    return normalizeDashboardMilestones(rawMilestones, selectedProjection, hasScenario);
+  }, [dashboard, ownerSelected, selectedProjection, effectiveProjectionOwner, displayProjectionRows, hasScenario]);
   const projectionTableColumns = useMemo(
     () => hasScenario ? scenarioProjectionColumns(normalizedProjectionRows) : TABLE_COLUMN_VIEWS.projectionOverview.defaultColumns,
     [hasScenario, normalizedProjectionRows]
@@ -218,8 +222,8 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   const sampledChartRows = useMemo(() => annualChartRows(chartRows, 5), [chartRows]);
   const sampledCashRows = cashRows;
   const sampledInterestRows = useMemo(
-    () => interestRows(ownerSelected ? ownerFilteredProjectionRows : projectionRows, hasScenario),
-    [ownerSelected, ownerFilteredProjectionRows, projectionRows, hasScenario]
+    () => interestRows(ownerSelected ? ownerFilteredProjectionRows : displayProjectionRows, hasScenario),
+    [ownerSelected, ownerFilteredProjectionRows, displayProjectionRows, hasScenario]
   );
   const hasDashboard = Boolean(dashboard);
   const showProjectionTable = hasDashboard && (tableProjectionRows.length || accountSelected);
@@ -1118,6 +1122,149 @@ function compactCurrency(value) {
 
 function normalizeDebtLookupKey(value = '') {
   return compactDebtLegendLabel(String(value || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function debtLookupKey(value = '') {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function normalizeDuplicateDebtProjectionRows(rows = [], selectedProjection, hasScenario) {
+  const context = duplicateDebtLabelContext(selectedProjection, hasScenario);
+  if (!context.hasDuplicates) return rows;
+  return rows.map((row) => {
+    const next = {};
+    const paidOffUsage = new Map();
+    Object.entries(row || {}).forEach(([key, value]) => {
+      const nextKey = normalizeDuplicateDebtColumnKey(key, row, next, context);
+      const nextValue = (key === 'Debts Paid Off' || key === 'Debts Paid Off+') && Array.isArray(value)
+        ? value.map((name) => resolveDuplicateDebtName(name, context, paidOffUsage))
+        : value;
+      if (Object.prototype.hasOwnProperty.call(next, nextKey) && nextKey !== key) return;
+      next[nextKey] = nextValue;
+    });
+    return next;
+  });
+}
+
+function normalizeDashboardMilestones(milestones = [], selectedProjection, hasScenario) {
+  const context = duplicateDebtLabelContext(selectedProjection, hasScenario);
+  if (!context.hasDuplicates) return milestones;
+  const usage = new Map();
+  return milestones.map((item) => ({
+    ...item,
+    label: normalizeMilestoneDebtLabel(item.label, context, usage),
+  }));
+}
+
+function normalizeMilestoneDebtLabel(label = '', context, usage) {
+  if (!String(label).endsWith(' Paid Off')) return label;
+  const debtName = String(label).replace(/ Paid Off$/, '');
+  return `${resolveDuplicateDebtName(debtName, context, usage)} Paid Off`;
+}
+
+function normalizeDuplicateDebtColumnKey(key, row, nextRow, context) {
+  const plusSuffix = key.endsWith('+') ? '+' : '';
+  const baseKey = plusSuffix ? key.slice(0, -1) : key;
+  const metricSuffixes = [' Payment', ' Interest', ' Principal', ' Bill'];
+  const metricSuffix = metricSuffixes.find((suffix) => baseKey.endsWith(suffix)) || '';
+  const debtPart = metricSuffix ? baseKey.slice(0, -metricSuffix.length) : baseKey;
+  const label = resolveDuplicateDebtColumnLabel(debtPart, metricSuffix, plusSuffix, row, nextRow, context);
+  return label ? `${label}${metricSuffix}${plusSuffix}` : key;
+}
+
+function resolveDuplicateDebtColumnLabel(debtName, metricSuffix, plusSuffix, row, nextRow, context) {
+  const exact = context.exactLookup.get(debtLookupKey(debtName));
+  if (exact && debtLookupKey(debtName) !== debtLookupKey(baseDebtName(debtName))) return exact;
+  const baseName = baseDebtName(debtName);
+  const targets = context.labelsByBaseName.get(debtLookupKey(baseName)) || [];
+  if (!targets.length) return exact || null;
+  if (debtLookupKey(debtName) !== debtLookupKey(baseName)) return exact || targets[0];
+  return targets.find((label) => {
+    const key = `${label}${metricSuffix}${plusSuffix}`;
+    return !Object.prototype.hasOwnProperty.call(row || {}, key) && !Object.prototype.hasOwnProperty.call(nextRow || {}, key);
+  }) || targets[0];
+}
+
+function resolveDuplicateDebtName(name, context, usage) {
+  const baseName = baseDebtName(name);
+  const targets = context.labelsByBaseName.get(debtLookupKey(baseName)) || [];
+  if (targets.length && debtLookupKey(name) === debtLookupKey(baseName)) {
+    const count = usage.get(debtLookupKey(baseName)) || 0;
+    usage.set(debtLookupKey(baseName), count + 1);
+    return targets[Math.min(count, targets.length - 1)];
+  }
+  return context.exactLookup.get(debtLookupKey(name)) || name;
+}
+
+function duplicateDebtLabelContext(selectedProjection, hasScenario) {
+  const assumptions = selectedProjection?.assumptions_snapshot || {};
+  const baseline = assumptions.baseline_assumptions || assumptions;
+  const groups = [baseline.debts || []];
+  if (hasScenario) groups.push(assumptions.debts || []);
+  const exactLookup = new Map();
+  const identityLookup = new Map();
+  const labelsByBaseName = new Map();
+  let hasDuplicates = false;
+
+  groups.forEach((debts = []) => {
+    const counts = debts.reduce((map, debt) => {
+      const key = debtLookupKey(baseDebtName(debt?.name || debt?._projection_label || 'Debt'));
+      map.set(key, (map.get(key) || 0) + 1);
+      return map;
+    }, new Map());
+    const usedLabels = new Set();
+    debts.forEach((debt, index) => {
+      const baseName = baseDebtName(debt?.name || debt?._projection_label || 'Debt');
+      const baseKey = debtLookupKey(baseName);
+      if ((counts.get(baseKey) || 0) <= 1) return;
+      hasDuplicates = true;
+      const label = duplicateDebtDisplayLabel(debt, index, usedLabels);
+      const labels = labelsByBaseName.get(baseKey) || [];
+      if (!labels.includes(label)) labels.push(label);
+      labelsByBaseName.set(baseKey, labels);
+      identityLookup.set(debtDisplayIdentity(debt, index), label);
+      [
+        debt.name,
+        debt._projection_label,
+        debtLegendName(debt),
+        compactDebtLegendLabel(debt._projection_label || debtLegendName(debt)),
+        baseName,
+      ].filter(Boolean).forEach((candidate) => {
+        const key = debtLookupKey(candidate);
+        if (!exactLookup.has(key)) exactLookup.set(key, label);
+      });
+    });
+  });
+
+  return { exactLookup, identityLookup, labelsByBaseName, hasDuplicates };
+}
+
+function duplicateDebtDisplayLabel(debt = {}, index, usedLabels) {
+  const name = baseDebtName(debt.name || debt._projection_label || 'Debt');
+  const type = labelize(debt.debt_type || 'debt');
+  const actualPayment = Number(
+    debt.actual_monthly_payment ??
+    debt.actualPayment ??
+    debt.actual_payment ??
+    (Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0))
+  );
+  let label = `${name} (${type} - ${compactCurrency(actualPayment)}/mo)`;
+  if (usedLabels.has(label)) {
+    label = `${label} #${debtDisplayIdentitySuffix(debt, index)}`;
+  }
+  usedLabels.add(label);
+  return label;
+}
+
+function debtDisplayIdentity(debt = {}, index) {
+  if (debt.id !== null && debt.id !== undefined) return `id:${debt.id}`;
+  if (debt.legacyId !== null && debt.legacyId !== undefined) return `legacy:${debt.legacyId}`;
+  if (debt._id !== null && debt._id !== undefined) return `mongo:${debt._id}`;
+  return `position:${index}`;
+}
+
+function debtDisplayIdentitySuffix(debt = {}, index) {
+  return debt.id ?? debt.legacyId ?? debt._id ?? index + 1;
 }
 
 function scenarioOverridesForExport(assumptions = {}) {
@@ -2467,9 +2614,10 @@ function interestPoint(row, suffix) {
 
 function ownerMilestones(milestones = [], selectedProjection, owner, hasScenario) {
   if (!owner || owner === 'overall') return milestones;
+  const normalizedMilestones = normalizeDashboardMilestones(milestones, selectedProjection, hasScenario);
   const qualifyingLabels = qualifyingDebtLabelsForOwner(selectedProjection, owner, hasScenario);
   if (!qualifyingLabels.size) return [];
-  return milestones
+  return normalizedMilestones
     .filter((item) => item.type === 'paid-off')
     .filter((item) => qualifyingLabels.has(item.label));
 }
@@ -2483,8 +2631,19 @@ function qualifyingDebtLabelsForOwner(selectedProjection, owner, hasScenario) {
     (sourceAssumptions.debts || [])
       .filter((debt) => ownerAccountIds.has(String(debt.account_balance_id)))
       .filter(isQualifyingPayoffDebt)
-      .map((debt) => `${debt._projection_label || debt.name || 'Debt'} Paid Off`)
+      .map((debt, index) => `${duplicateDebtDisplayLabelForDebt(debt, selectedProjection, hasScenario, index)} Paid Off`)
   );
+}
+
+function duplicateDebtDisplayLabelForDebt(debt, selectedProjection, hasScenario, index) {
+  const context = duplicateDebtLabelContext(selectedProjection, hasScenario);
+  if (!context.hasDuplicates) return debt._projection_label || debt.name || 'Debt';
+  return context.identityLookup.get(debtDisplayIdentity(debt, index))
+    || context.exactLookup.get(debtLookupKey(debt._projection_label || ''))
+    || context.exactLookup.get(debtLookupKey(debt.name || ''))
+    || debt._projection_label
+    || debt.name
+    || 'Debt';
 }
 
 function isQualifyingPayoffDebt(debt = {}) {

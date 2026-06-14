@@ -9,6 +9,7 @@ const { calculatePayoffMetrics } = require('./payoffMetrics');
 const {
   debtApr,
   debtColumnLabels,
+  debtIdentity,
   debtPaymentActiveForMonth,
   isBill,
   monthlyIncomeAmount,
@@ -45,6 +46,9 @@ function jsonReady(value) {
 
     const result = {};
     for (const [key, item] of Object.entries(value)) {
+      if (key === '_projection_identity') {
+        continue;
+      }
       result[key] = jsonReady(item);
     }
     return result;
@@ -63,7 +67,7 @@ function snapshotAssumptions(incomeSources, debts, interestRates, accountBalance
 }
 
 function projectionLabelFor(columnLabels, debt, index) {
-  const identity = Object.prototype.hasOwnProperty.call(debt, 'id') ? debt.id : index;
+  const identity = debtIdentity(debt, index);
   if (Object.prototype.hasOwnProperty.call(columnLabels, identity)) {
     return columnLabels[identity];
   }
@@ -89,12 +93,13 @@ function generateBaselineProjection(
 
   const columnLabels = debtColumnLabels(debtData);
   debtData.forEach((debt, index) => {
+    debt._projection_identity = debtIdentity(debt, index);
     debt._projection_label = projectionLabelFor(columnLabels, debt, index);
   });
 
   const balances = {};
   for (const debt of debtData) {
-    balances[debt.id] = Number(debt.current_balance);
+    balances[debt._projection_identity] = Number(debt.current_balance);
   }
 
   let cashBalance = startingCashBalance(accountData, startMonth);
@@ -117,7 +122,7 @@ function generateBaselineProjection(
     let totalBills = 0.0;
 
     for (const debt of debtData) {
-      const debtId = debt.id;
+      const debtId = debt._projection_identity;
       const name = debt._projection_label || debt.name;
       const bill = isBill(debt);
       const balance = balances[debtId];

@@ -272,8 +272,14 @@ export default function ScenarioBuilder({ isActive = false }) {
     setDebtAprError('');
     const existingId = editingDebtOverrideIndex === null ? null : debtOverrides[editingDebtOverrideIndex]?.debt?.id;
     const temporaryId = existingId || Date.now();
-    const debt = { ...toDebtPayload({ ...debtForm, startingBalance: debtForm.currentBalance }, { startDate: baselineStartMonth(baseline) }), id: temporaryId };
-    const rates = [toRegularRatePayload(debtForm, temporaryId), toPromoRatePayload(debtForm, temporaryId)].filter(Boolean);
+    const defaultStartDate = baselineStartMonth(baseline);
+    const normalizedDebtForm = {
+      ...debtForm,
+      startingBalance: debtForm.currentBalance,
+      startDate: debtForm.startDate || defaultStartDate,
+    };
+    const debt = { ...toDebtPayload(normalizedDebtForm, { startDate: defaultStartDate }), id: temporaryId };
+    const rates = [toRegularRatePayload(normalizedDebtForm, temporaryId), toPromoRatePayload(normalizedDebtForm, temporaryId)].filter(Boolean);
     setDebtOverrides((items) => {
       const next = { debt, rates };
       if (editingDebtOverrideIndex === null) return [...items, next];
@@ -326,6 +332,8 @@ export default function ScenarioBuilder({ isActive = false }) {
       setDebtAprError('');
       setDebtDateError('');
       setShowDebtForm(false);
+    } else if (editingDebtOverrideIndex !== null && editingDebtOverrideIndex > index) {
+      setEditingDebtOverrideIndex(editingDebtOverrideIndex - 1);
     }
     setScenario(null);
   }
@@ -389,6 +397,8 @@ export default function ScenarioBuilder({ isActive = false }) {
       setEditingIncomeOverrideIndex(null);
       setIncomeForm(incomeTemplate);
       setShowIncomeForm(false);
+    } else if (editingIncomeOverrideIndex !== null && editingIncomeOverrideIndex > index) {
+      setEditingIncomeOverrideIndex(editingIncomeOverrideIndex - 1);
     }
     setScenario(null);
   }
@@ -984,7 +994,41 @@ function sortByDisplayOrder(items = []) {
 }
 
 function baselineStartMonth(baseline) {
-  return baseline?.generated_rows?.[0]?.month || new Date().toISOString().slice(0, 10);
+  const candidates = [
+    baseline?.start_month,
+    baseline?.startMonth,
+    baseline?.assumptions_snapshot?.projection_start_month,
+    baseline?.assumptions_snapshot?.start_month,
+    baseline?.assumptions_snapshot?.projectionParams?.startMonth,
+    baseline?.assumptions_snapshot?.baseline_assumptions?.projection_start_month,
+    baseline?.generated_rows?.[0]?.month,
+  ];
+  return candidates.map(toIsoMonthStart).find(Boolean) || new Date().toISOString().slice(0, 10);
+}
+
+function toIsoMonthStart(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value.slice(0, 7)}-01`;
+  if (/^\d{4}-\d{2}$/.test(value)) return `${value}-01`;
+
+  const match = String(value).trim().match(/^([A-Za-z]{3,9})\s+(\d{4})$/);
+  if (!match) return '';
+  const monthIndex = [
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
+  ].indexOf(match[1].slice(0, 3).toLowerCase());
+  if (monthIndex < 0) return '';
+  return `${match[2]}-${String(monthIndex + 1).padStart(2, '0')}-01`;
 }
 
 function defaultScenarioTitle(baseline) {
@@ -1058,7 +1102,7 @@ function restoreScenarioOverrides(assumptions = {}) {
 
   const debtOverrides = sortByDisplayOrder(scenarioDebts)
     .filter((item) => {
-      const baselineItem = baselineDebts.find((candidate) => identityMatches(candidate, item, 'name'));
+      const baselineItem = baselineDebts.find((candidate) => debtIdentityMatches(candidate, item));
       const debtChanged = !baselineItem || comparableDebt(baselineItem) !== comparableDebt(item);
       const baselineDebtRates = baselineRates.filter((rate) => sameId(rate.debt_id, item.id));
       const scenarioDebtRates = scenarioRates.filter((rate) => sameId(rate.debt_id, item.id));
@@ -1084,6 +1128,16 @@ function identityMatches(left, right, naturalKey) {
     return sameId(left.id, right.id);
   }
   return left?.[naturalKey] && left[naturalKey] === right?.[naturalKey];
+}
+
+function debtIdentityMatches(left, right) {
+  if (left?.id !== undefined && right?.id !== undefined && left.id !== null && right.id !== null) {
+    return sameId(left.id, right.id);
+  }
+  if (left?._projection_label && right?._projection_label) {
+    return left._projection_label === right._projection_label;
+  }
+  return false;
 }
 
 function sameId(left, right) {

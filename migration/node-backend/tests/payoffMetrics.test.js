@@ -185,6 +185,38 @@ test('payoff metrics match FastAPI immediate and future payoff behavior with sur
   assertParity(cases);
 });
 
+test('payoff metrics keep same-name debts without ids in separate payoff balances', () => {
+  const result = payoff.calculatePayoffMetrics(
+    [
+      debt({
+        id: undefined,
+        name: 'Duplicate',
+        current_balance: 100,
+        minimum_monthly_payment: 100,
+        priority_number: 1,
+      }),
+      debt({
+        id: undefined,
+        name: 'Duplicate',
+        current_balance: 200,
+        minimum_monthly_payment: 100,
+        priority_number: 2,
+      }),
+    ],
+    [],
+    '2026-01-01',
+    [{ month: '2026-01-01', 'Monthly Surplus': 0 }],
+    12,
+  );
+
+  assert.deepEqual(result, {
+    payoffMonth: '2026-02-01',
+    monthsToDebtFree: 2,
+    totalProjectedInterest: 0,
+    payoffStatus: 'paid_off',
+  });
+});
+
 test('payoff metrics match FastAPI APR, promo APR, zero APR, and missing APR cases', () => {
   const rates = [
     { id: 1, debt_id: 1, apr_percentage: 24, start_date: '2026-01-01', end_date: null },

@@ -325,6 +325,10 @@ button {
   padding: 18px;
 }
 
+.debts-data-card .card-header {
+  margin-bottom: 8px;
+}
+
 .table-card,
 .saved-panel,
 .action-strip,
