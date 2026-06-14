@@ -1,14 +1,16 @@
 # Migration Dataset Audit
 
-Status date: June 4, 2026
+Status date: June 4, 2026 (historical phase record)
 
 Dataset Version: 1.0
 
-Current source of truth: FastAPI + SQLite.
+Historical source of truth at the time of this audit: FastAPI + SQLite.
 
-MongoDB status: non-authoritative migration target.
+MongoDB status at the time of this audit: non-authoritative migration target.
 
-Import status: Deferred.
+Import status at the time of this audit: Deferred.
+
+Current status note, June 12, 2026: this file is retained as a historical dataset audit. Dataset Version 1.0 has since been imported into MongoDB Community Server and is verified with `npm run dataset:verify` from `migration/node-backend`.
 
 ## Canonical Dataset Definition
 

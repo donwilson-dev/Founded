@@ -12,6 +12,8 @@ MongoDB is the authoritative Founded data source for the migrated backend.
 
 The former FastAPI calculation bridge has been retired from active Node execution paths. FastAPI application files may still exist outside this backend as historical/reference artifacts, but calculation routes in this backend no longer depend on FastAPI.
 
+Historical phase notes later in this document are retained for traceability. They do not override the current runtime status above.
+
 ## Completed Phases
 
 - Phase 1: Express app bootstrap.

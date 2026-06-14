@@ -1,10 +1,12 @@
 # Founded API Contract Migration Map
 
-Status date: June 5, 2026
+Status date: June 5, 2026 (historical phase record)
 
-Current source of truth: FastAPI + SQLite.
+Historical source of truth at the time of this map: FastAPI + SQLite.
 
-Express migration status: Phase 9A saved projection and scenario payload migration. MongoDB models are connected to GET-only controllers for accounts, income, debts, interest rates, saved projections, and scenarios. Saved projection and scenario `generated_rows`, `assumptions_snapshot`, and metadata are migrated from FastAPI + SQLite and validated for read-path payload parity. Dashboard remains a `501` placeholder. No write behavior, calculations, projection generation, scenario execution, or dashboard aggregation exists.
+Express migration status at the time of this map: Phase 9A saved projection and scenario payload migration. MongoDB models are connected to GET-only controllers for accounts, income, debts, interest rates, saved projections, and scenarios. Saved projection and scenario `generated_rows`, `assumptions_snapshot`, and metadata are migrated from FastAPI + SQLite and validated for read-path payload parity. Dashboard remains a `501` placeholder. No write behavior, calculations, projection generation, scenario execution, or dashboard aggregation exists.
+
+Current status note, June 12, 2026: this file is retained as a historical contract tracker. It does not describe the active runtime. The active Founded runtime is the Node.js/Express backend backed by MongoDB Community Server, and native calculation routes are implemented under `src/routes/`, `src/controllers/`, and `src/services/calculations/`.
 
 Allowed statuses:
 

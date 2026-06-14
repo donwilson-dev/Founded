@@ -1,46 +1,70 @@
-# Founded Backend
+# Founded
 
-Backend foundation for Founded, a financial planning app for income, debt, projections, scenarios, debt payoff forecasting, and dashboard-ready data.
+Founded is a financial planning app for income, debt, projections, scenarios, debt payoff forecasting, and dashboard-ready data.
+
+The active V1 runtime is:
+
+- Node.js/Express backend in `migration/node-backend`
+- MongoDB Community Server database
+- React/Vite frontend in `frontend`
+
+The legacy FastAPI + SQLite implementation remains in the repository for historical parity checks and Python regression tests only. It is not the active application runtime.
 
 ## Setup
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+cd migration\node-backend
+npm install
+
+cd ..\..\frontend
+npm install
 ```
 
-## Run
+Ensure MongoDB Community Server is running locally. The native backend reads `MONGODB_URI` from `migration/node-backend/.env`; the standard local database is `mongodb://127.0.0.1:27017/founded_migration`.
+
+## Run Backend
 
 ```powershell
-uvicorn app.main:app --reload
+cd migration\node-backend
+npm run dev
 ```
 
-API docs are available at `http://127.0.0.1:8000/docs`.
+The native backend health endpoint is available at `http://127.0.0.1:4000/health`.
 
 ## Frontend
 
 ```powershell
 cd frontend
-npm install
-npm run dev -- --port 5173
+npm run dev -- --port 5174
 ```
 
-The React app runs at `http://127.0.0.1:5173` and talks to the FastAPI backend at `http://127.0.0.1:8000`.
+The React app talks to the native Node backend at `http://127.0.0.1:4000` by default. Override with `VITE_API_BASE_URL` if needed.
 
-## Test
+## Validation
 
 ```powershell
-pytest
+cd migration\node-backend
+npm test
+npm run dataset:verify
+npm run projection-payloads:verify
+
+cd ..\..\frontend
+npm run build
+
+cd ..
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-## Seed Data
+The Python test suite is retained as a legacy parity and regression safety check while the active runtime remains Node.js/Express + MongoDB.
+
+## Dataset Version 1.0
 
 ```powershell
-python -m app.seed
+cd migration\node-backend
+npm run dataset:verify
 ```
 
-Running the seed command replaces local financial records with the official portfolio-safe demonstration dataset:
+The native MongoDB dataset uses the official portfolio-safe demonstration records:
 
 - Demo Household Baseline
 - Demo Debt Reduction Scenario
