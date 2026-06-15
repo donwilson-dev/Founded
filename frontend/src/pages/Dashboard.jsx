@@ -201,11 +201,15 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     : [];
   const insights = insightCards(dashboard);
   const milestones = useMemo(() => {
-    const rawMilestones = ownerSelected
-      ? ownerMilestones(dashboard?.datasets?.milestones || [], selectedProjection, effectiveProjectionOwner, false)
-      : dashboard?.datasets?.milestones || milestoneRows(displayProjectionRows, hasScenario);
+    const rawMilestones = dashboard?.datasets?.milestones || milestoneRows(displayProjectionRows, hasScenario);
+    if (accountSelected) {
+      return accountMilestones(rawMilestones, selectedProjection, projectionAccount, hasScenario);
+    }
+    if (ownerSelected) {
+      return ownerMilestones(rawMilestones, selectedProjection, effectiveProjectionOwner, false);
+    }
     return normalizeDashboardMilestones(rawMilestones, selectedProjection, hasScenario);
-  }, [dashboard, ownerSelected, selectedProjection, effectiveProjectionOwner, displayProjectionRows, hasScenario]);
+  }, [dashboard, accountSelected, projectionAccount, ownerSelected, selectedProjection, effectiveProjectionOwner, displayProjectionRows, hasScenario]);
   const projectionTableColumns = useMemo(
     () => hasScenario ? scenarioProjectionColumns(normalizedProjectionRows) : TABLE_COLUMN_VIEWS.projectionOverview.defaultColumns,
     [hasScenario, normalizedProjectionRows]
@@ -2622,17 +2626,73 @@ function ownerMilestones(milestones = [], selectedProjection, owner, hasScenario
     .filter((item) => qualifyingLabels.has(item.label));
 }
 
+function accountMilestones(milestones = [], selectedProjection, accountId, hasScenario) {
+  if (!accountId || accountId === 'all') return normalizeDashboardMilestones(milestones, selectedProjection, hasScenario);
+  const normalizedMilestones = normalizeDashboardMilestones(milestones, selectedProjection, hasScenario);
+  const qualifyingLabels = qualifyingDebtLabelsForAccount(selectedProjection, accountId, hasScenario);
+  if (!qualifyingLabels.size) return [];
+  return normalizedMilestones
+    .filter((item) => item.type === 'paid-off')
+    .filter((item) => qualifyingLabels.has(item.label));
+}
+
 function qualifyingDebtLabelsForOwner(selectedProjection, owner, hasScenario) {
   const assumptions = selectedProjection?.assumptions_snapshot || {};
   const sourceAssumptions = hasScenario ? assumptions : assumptions.baseline_assumptions || assumptions;
   const accountBalances = assumptions.account_balances || assumptions.baseline_assumptions?.account_balances || [];
-  const ownerAccountIds = ownerAccountIdSet(accountBalances, owner);
+  const ownerAccountIds = accountIdentitySetForAccounts(accountBalances.filter((account) => String(account.owner || '').trim() === owner));
   return new Set(
     (sourceAssumptions.debts || [])
-      .filter((debt) => ownerAccountIds.has(String(debt.account_balance_id)))
-      .filter(isQualifyingPayoffDebt)
-      .map((debt, index) => `${duplicateDebtDisplayLabelForDebt(debt, selectedProjection, hasScenario, index)} Paid Off`)
+      .map((debt, index) => ({ debt, index }))
+      .filter(({ debt }) => accountIdsMatch(debt, ownerAccountIds))
+      .filter(({ debt }) => isQualifyingPayoffDebt(debt))
+      .map(({ debt, index }) => `${duplicateDebtDisplayLabelForDebt(debt, selectedProjection, hasScenario, index)} Paid Off`)
   );
+}
+
+function qualifyingDebtLabelsForAccount(selectedProjection, accountId, hasScenario) {
+  const assumptions = selectedProjection?.assumptions_snapshot || {};
+  const sourceAssumptions = hasScenario ? assumptions : assumptions.baseline_assumptions || assumptions;
+  const accountIds = accountIdentitySetForSelection(selectedProjection, accountId);
+  return new Set(
+    (sourceAssumptions.debts || [])
+      .map((debt, index) => ({ debt, index }))
+      .filter(({ debt }) => accountIdsMatch(debt, accountIds))
+      .filter(({ debt }) => isQualifyingPayoffDebt(debt))
+      .map(({ debt, index }) => `${duplicateDebtDisplayLabelForDebt(debt, selectedProjection, hasScenario, index)} Paid Off`)
+  );
+}
+
+function accountIdentitySetForSelection(selectedProjection, accountId) {
+  const assumptions = selectedProjection?.assumptions_snapshot || {};
+  const accountBalances = assumptions.account_balances || assumptions.baseline_assumptions?.account_balances || [];
+  const selectedAccount = accountBalances.find((account) => accountIdsForRecord(account).has(String(accountId)));
+  return accountIdentitySetForAccounts(selectedAccount ? [selectedAccount] : [{ id: accountId }]);
+}
+
+function accountIdentitySetForAccounts(accounts = []) {
+  return accounts.reduce((ids, account) => {
+    accountIdsForRecord(account).forEach((id) => ids.add(id));
+    return ids;
+  }, new Set());
+}
+
+function accountIdsMatch(record = {}, accountIds = new Set()) {
+  return [...accountIdsForRecord(record)].some((id) => accountIds.has(id));
+}
+
+function accountIdsForRecord(record = {}) {
+  return new Set([
+    record.id,
+    record.legacyId,
+    record.legacy_id,
+    record._id,
+    record.legacy_account_balance_id,
+    record.account_balance_id,
+    record.accountBalanceId,
+  ]
+    .filter((value) => value !== undefined && value !== null && value !== '')
+    .map((value) => String(value)));
 }
 
 function duplicateDebtDisplayLabelForDebt(debt, selectedProjection, hasScenario, index) {
