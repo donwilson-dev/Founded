@@ -12,7 +12,7 @@ import {
   TrendingDown,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
   toAccountBalancePayload,
@@ -30,6 +30,7 @@ import { accountDisplayName } from '../utils/accountLabels.js';
 import { currency, currencyPrecise, labelize, percent, shortMonth } from '../utils/formatters.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
+import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
 import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
 const MAX_ACCOUNT_BALANCES = 15;
@@ -99,7 +100,7 @@ function currentMonthStart() {
 
 function splitRates(rates = []) {
   const promo = rates.find((rate) => rate.end_date);
-  const regular = rates.find((rate) => !rate.end_date) || rates.find((rate) => rate.id !== promo?.id);
+  const regular = rates.find((rate) => !rate.end_date) || rates.find((rate) => String(rateRecordId(rate)) !== String(rateRecordId(promo)));
   return { promo, regular };
 }
 
@@ -135,6 +136,8 @@ export default function BaselineBuilder({ isActive = false }) {
   const accountBalanceFormRef = useRef(null);
   const incomeFormRef = useRef(null);
   const debtFormRef = useRef(null);
+  const { isRegenerating, runAutoRegeneration } = useProjectionAutoRegeneration({ setStatus });
+  const busy = loading || isRegenerating;
 
   async function refresh({ includeInputs = true } = {}) {
     try {
@@ -235,7 +238,7 @@ export default function BaselineBuilder({ isActive = false }) {
     };
   }, [rows, projection, incomeSources, debts]);
 
-  const editingDebt = debts.find((debt) => debt.id === editingDebtId);
+  const editingDebt = debts.find((debt) => String(recordId(debt)) === String(editingDebtId));
   const selectedSavedProjection = savedProjections.find((item) => String(item.id) === String(selectedSavedProjectionId));
   const activeAccountBalances = useMemo(() => accountBalances.filter((item) => item.active !== false), [accountBalances]);
 
@@ -253,15 +256,15 @@ export default function BaselineBuilder({ isActive = false }) {
 
   function accountOptionsFor(selectedId) {
     const options = [...activeAccountBalances];
-    const selected = accountBalances.find((account) => String(account.id) === String(selectedId));
-    if (selected && !options.some((account) => String(account.id) === String(selected.id))) {
+    const selected = accountBalances.find((account) => String(recordId(account)) === String(selectedId));
+    if (selected && !options.some((account) => String(recordId(account)) === String(recordId(selected)))) {
       options.push(selected);
     }
     return options;
   }
 
   function accountExists(accountId) {
-    return accountBalances.some((account) => String(account.id) === String(accountId));
+    return accountBalances.some((account) => String(recordId(account)) === String(accountId));
   }
 
   function validateAccountSelection(accountId, label = 'Account') {
@@ -300,10 +303,63 @@ export default function BaselineBuilder({ isActive = false }) {
     }, 0);
   }
 
-  function markWorkingBaselineChanged() {
-    setSelectedSavedProjectionId('');
-    setProjection(null);
-  }
+  const autoSaveBaselineProjection = useCallback(async ({
+    accountBalances: nextAccountBalances = accountBalances,
+    incomeSources: nextIncomeSources = incomeSources,
+    debts: nextDebts = debts,
+    successMessage = 'Projection regenerated and saved.',
+  } = {}) => {
+    if (!projectionTitle.trim()) {
+      setProjection(null);
+      throw new Error('Baseline Title is required before auto-regeneration.');
+    }
+
+    return runAutoRegeneration({
+      successMessage,
+      task: async (notify) => {
+        notify('Generating baseline projection...');
+        const generated = await foundedApi.generateBaselineProjection({
+          ...projectionParams,
+          startMonth: currentMonthStart(),
+          accountBalanceIds: nextAccountBalances.map((item) => recordId(item)),
+          incomeSourceIds: nextIncomeSources.map((item) => incomeRecordId(item)),
+          debtIds: nextDebts.map((item) => recordId(item)),
+        });
+        const nextProjection = {
+          ...generated,
+          assumptions_snapshot: buildSourceSnapshot(
+            nextAccountBalances,
+            nextIncomeSources,
+            nextDebts,
+            generated.assumptions_snapshot
+          ),
+        };
+        notify('Saving regenerated baseline projection...');
+        const saved = await foundedApi.saveProjection({
+          title: projectionTitle,
+          projectionType: 'baseline',
+          notes: projectionNotes,
+          assumptionsSnapshot: nextProjection.assumptions_snapshot,
+          generatedRows: nextProjection.generated_rows || [],
+        });
+        setProjection(nextProjection);
+        setSelectedSavedProjectionId(String(saved.id));
+        await refreshSavedProjections();
+        window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
+        return { generated: nextProjection, saved };
+      },
+    });
+  }, [
+    accountBalances,
+    debts,
+    incomeSources,
+    projectionNotes,
+    projectionParams,
+    projectionTitle,
+    runAutoRegeneration,
+    setProjection,
+    setSelectedSavedProjectionId,
+  ]);
 
   function startAddAccountBalance() {
     if (accountBalances.length >= MAX_ACCOUNT_BALANCES) {
@@ -317,7 +373,7 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   function startEditAccountBalance(balance) {
-    setEditingAccountBalanceId(balance.id);
+    setEditingAccountBalanceId(recordId(balance));
     setAccountBalanceForm({
       name: balance.name || '',
       owner: balance.owner || '',
@@ -385,7 +441,7 @@ export default function BaselineBuilder({ isActive = false }) {
 
   function startEditDebt(debt) {
     const { promo, regular } = splitRates(debt.interest_rates);
-    setEditingDebtId(debt.id);
+    setEditingDebtId(recordId(debt));
     setDebtForm({
       name: debt.name || '',
       accountBalanceId: debtAccountSelectionId(debt),
@@ -422,19 +478,21 @@ export default function BaselineBuilder({ isActive = false }) {
     event.preventDefault();
     setLoading(true);
     try {
+      let nextAccountBalances;
       if (editingAccountBalanceId) {
         const updated = await foundedApi.updateAccountBalance(editingAccountBalanceId, toAccountBalancePayload(accountBalanceForm));
-        setAccountBalances((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-        markWorkingBaselineChanged();
-        setStatus('Account balance updated.');
+        nextAccountBalances = accountBalances.map((item) => (String(recordId(item)) === String(recordId(updated)) ? updated : item));
+        setAccountBalances(nextAccountBalances);
       } else {
         const created = await foundedApi.createAccountBalance(toAccountBalancePayload(accountBalanceForm));
-        setAccountBalances((items) => [...items, created]);
-        markWorkingBaselineChanged();
-        setStatus('Account balance added.');
+        nextAccountBalances = [...accountBalances, created];
+        setAccountBalances(nextAccountBalances);
       }
       cancelAccountBalanceForm();
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        accountBalances: nextAccountBalances,
+        successMessage: editingAccountBalanceId ? 'Account balance updated. Projection regenerated and saved.' : 'Account balance added. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -446,9 +504,10 @@ export default function BaselineBuilder({ isActive = false }) {
     const amount = parseInlineAmount(value);
     if (amount === null) return;
     if (amount === Number(balance.amount || 0)) return;
+    const balanceId = recordId(balance);
     setLoading(true);
     try {
-      const updated = await foundedApi.updateAccountBalance(balance.id, toAccountBalancePayload({
+      const updated = await foundedApi.updateAccountBalance(balanceId, toAccountBalancePayload({
         name: balance.name || '',
         owner: balance.owner || '',
         accountType: balance.account_type || balance.accountType || '',
@@ -457,10 +516,12 @@ export default function BaselineBuilder({ isActive = false }) {
         notes: balance.notes || '',
         active: balance.active !== false,
       }));
-      setAccountBalances((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-      markWorkingBaselineChanged();
-      setStatus('Account balance updated.');
-      await refreshSavedProjections();
+      const nextAccountBalances = accountBalances.map((item) => (String(recordId(item)) === String(recordId(updated)) ? updated : item));
+      setAccountBalances(nextAccountBalances);
+      await autoSaveBaselineProjection({
+        accountBalances: nextAccountBalances,
+        successMessage: 'Account balance updated. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -469,21 +530,24 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteAccountBalance(balance) {
-    if (accountIsReferenced(balance.id)) {
+    const balanceId = recordId(balance);
+    if (accountIsReferenced(balanceId)) {
       setStatus(ACCOUNT_REFERENCE_MESSAGE);
       return;
     }
     setLoading(true);
     try {
-      await foundedApi.deleteAccountBalance(balance.id);
-      setAccountBalances((items) => items.filter((item) => item.id !== balance.id));
-      if (String(editingAccountBalanceId) === String(balance.id)) {
+      await foundedApi.deleteAccountBalance(balanceId);
+      const nextAccountBalances = accountBalances.filter((item) => String(recordId(item)) !== String(recordId(balance)));
+      setAccountBalances(nextAccountBalances);
+      if (String(editingAccountBalanceId) === String(balanceId)) {
         cancelAccountBalanceForm();
       }
-      markWorkingBaselineChanged();
       setPendingDeleteRow(null);
-      setStatus('Account balance deleted.');
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        accountBalances: nextAccountBalances,
+        successMessage: 'Account balance deleted. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -500,19 +564,21 @@ export default function BaselineBuilder({ isActive = false }) {
     }
     setLoading(true);
     try {
+      let nextIncomeSources;
       if (editingIncomeId) {
         const updated = await foundedApi.updateIncomeSource(editingIncomeId, toIncomePayload(incomeForm));
-        setIncomeSources((items) => items.map((item) => (String(incomeRecordId(item)) === String(incomeRecordId(updated)) ? updated : item)));
-        markWorkingBaselineChanged();
-        setStatus('Income source updated.');
+        nextIncomeSources = incomeSources.map((item) => (String(incomeRecordId(item)) === String(incomeRecordId(updated)) ? updated : item));
+        setIncomeSources(nextIncomeSources);
       } else {
         const created = await foundedApi.createIncomeSource(toIncomePayload(incomeForm));
-        setIncomeSources((items) => [...items, created]);
-        markWorkingBaselineChanged();
-        setStatus('Income source added.');
+        nextIncomeSources = [...incomeSources, created];
+        setIncomeSources(nextIncomeSources);
       }
       cancelIncomeForm();
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        incomeSources: nextIncomeSources,
+        successMessage: editingIncomeId ? 'Income source updated. Projection regenerated and saved.' : 'Income source added. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -525,14 +591,16 @@ export default function BaselineBuilder({ isActive = false }) {
     setLoading(true);
     try {
       await foundedApi.deleteIncomeSource(sourceId);
-      setIncomeSources((items) => items.filter((item) => String(incomeRecordId(item)) !== String(sourceId)));
+      const nextIncomeSources = incomeSources.filter((item) => String(incomeRecordId(item)) !== String(sourceId));
+      setIncomeSources(nextIncomeSources);
       if (String(editingIncomeId) === String(sourceId)) {
         cancelIncomeForm();
       }
-      markWorkingBaselineChanged();
       setPendingDeleteRow(null);
-      setStatus('Income source deleted.');
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        incomeSources: nextIncomeSources,
+        successMessage: 'Income source deleted. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -571,28 +639,30 @@ export default function BaselineBuilder({ isActive = false }) {
       if (editingDebtId) {
         let persistedRates = [];
         try {
-          const persistedDebt = await foundedApi.getDebt(editingDebtId);
-          persistedRates = persistedDebt.interest_rates || [];
+          persistedRates = await foundedApi.listInterestRates(debtId);
         } catch {
-          persistedRates = debts.find((debt) => debt.id === editingDebtId)?.interest_rates || [];
+          persistedRates = debts.find((debt) => String(recordId(debt)) === String(editingDebtId))?.interest_rates || [];
         }
-        await Promise.all(persistedRates.map((rate) => deleteInterestRateQuietly(rate.id)));
+        await Promise.all(persistedRates.map((rate) => deleteInterestRateQuietly(rateRecordId(rate))));
       }
 
       const regularRatePayload = toRegularRatePayload(debtForm, debtId);
       const promoRatePayload = toPromoRatePayload(debtForm, debtId);
       if (regularRatePayload) await foundedApi.createInterestRate(regularRatePayload);
       if (promoRatePayload) await foundedApi.createInterestRate(promoRatePayload);
-      const debtWithRates = await foundedApi.getDebt(debtId);
-      setDebts((items) => {
-        const exists = items.some((item) => item.id === debtWithRates.id);
-        return exists ? items.map((item) => (item.id === debtWithRates.id ? debtWithRates : item)) : [...items, debtWithRates];
-      });
-      markWorkingBaselineChanged();
+      const debtWithRates = await fetchDebtWithRates(debtId);
+      const exists = debts.some((item) => String(recordId(item)) === String(recordId(debtWithRates)));
+      const nextDebts = exists
+        ? debts.map((item) => (String(recordId(item)) === String(recordId(debtWithRates)) ? debtWithRates : item))
+        : [...debts, debtWithRates];
+      setDebts(nextDebts);
       setDebtDateError('');
 
       cancelDebtForm();
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        debts: nextDebts,
+        successMessage: editingDebtId ? 'Debt updated. Projection regenerated and saved.' : 'Debt added. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -611,7 +681,8 @@ export default function BaselineBuilder({ isActive = false }) {
     setLoading(true);
     try {
       const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
-      await foundedApi.updateDebt(debt.id, toDebtPayload({
+      const debtId = recordId(debt);
+      await foundedApi.updateDebt(debtId, toDebtPayload({
         name: debt.name || '',
         accountBalanceId: debtAccountSelectionId(debt),
         debtType: debt.debt_type || 'credit_card',
@@ -621,18 +692,24 @@ export default function BaselineBuilder({ isActive = false }) {
         actualPayment: otherDebt ? currentBalance : actualPayment,
         plannedExtraPayment: debt.planned_extra_payment ?? 0,
         paymentDate: debt.payment_date || debt.paymentDate || '',
-        startDate: debt.start_date || currentMonthStart(),
+        startDate: debt.start_date || '',
         payoffTargetDate: debt.payoff_target_date || '',
         priorityNumber: debt.priority_number ?? '',
         recurrence: debt.recurrence || 'monthly',
         notes: debt.notes || '',
         active: debt.active !== false,
       }));
-      const updated = await foundedApi.getDebt(debt.id);
-      setDebts((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-      markWorkingBaselineChanged();
-      setStatus('Debt balance updated.');
-      await refreshSavedProjections();
+      const updated = await fetchDebtWithRates(debtId, debt);
+      const updatedWithRates = {
+        ...updated,
+        interest_rates: updated.interest_rates || debt.interest_rates || [],
+      };
+      const nextDebts = debts.map((item) => (String(recordId(item)) === String(recordId(updatedWithRates)) ? updatedWithRates : item));
+      setDebts(nextDebts);
+      await autoSaveBaselineProjection({
+        debts: nextDebts,
+        successMessage: 'Debt balance updated. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -641,17 +718,20 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteDebt(debt) {
+    const debtId = recordId(debt);
     setLoading(true);
     try {
-      await foundedApi.deleteDebt(debt.id);
-      setDebts((items) => items.filter((item) => item.id !== debt.id));
-      if (String(editingDebtId) === String(debt.id)) {
+      await foundedApi.deleteDebt(debtId);
+      const nextDebts = debts.filter((item) => String(recordId(item)) !== String(recordId(debt)));
+      setDebts(nextDebts);
+      if (String(editingDebtId) === String(debtId)) {
         cancelDebtForm();
       }
-      markWorkingBaselineChanged();
       setPendingDeleteRow(null);
-      setStatus('Debt deleted.');
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        debts: nextDebts,
+        successMessage: 'Debt deleted. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -660,17 +740,20 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteInterestRate(rate) {
+    const rateId = rateRecordId(rate);
     setLoading(true);
     try {
-      await foundedApi.deleteInterestRate(rate.id);
-      setDebts((items) => items.map((debt) => ({
+      await foundedApi.deleteInterestRate(rateId);
+      const nextDebts = debts.map((debt) => ({
         ...debt,
-        interest_rates: (debt.interest_rates || []).filter((item) => item.id !== rate.id),
-      })));
-      markWorkingBaselineChanged();
+        interest_rates: (debt.interest_rates || []).filter((item) => String(rateRecordId(item)) !== String(rateId)),
+      }));
+      setDebts(nextDebts);
       setPendingDeleteRateId(null);
-      setStatus('Interest rate entry deleted.');
-      await refreshSavedProjections();
+      await autoSaveBaselineProjection({
+        debts: nextDebts,
+        successMessage: 'Interest rate entry deleted. Projection regenerated and saved.',
+      });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -695,9 +778,9 @@ export default function BaselineBuilder({ isActive = false }) {
       const generated = await foundedApi.generateBaselineProjection({
         ...projectionParams,
         startMonth: currentMonthStart(),
-        accountBalanceIds: accountBalances.map((item) => item.id),
-        incomeSourceIds: incomeSources.map((item) => item.id),
-        debtIds: debts.map((item) => item.id),
+        accountBalanceIds: accountBalances.map((item) => recordId(item)),
+        incomeSourceIds: incomeSources.map((item) => incomeRecordId(item)),
+        debtIds: debts.map((item) => recordId(item)),
       });
       setProjection({
         ...generated,
@@ -730,7 +813,7 @@ export default function BaselineBuilder({ isActive = false }) {
     const generatedRows = projection?.generated_rows || [];
     setLoading(true);
     try {
-      await foundedApi.saveProjection({
+      const saved = await foundedApi.saveProjection({
         title: projectionTitle,
         projectionType: 'baseline',
         notes: projectionNotes,
@@ -738,6 +821,7 @@ export default function BaselineBuilder({ isActive = false }) {
         generatedRows,
       });
       setProjectionTitle(projectionTitle);
+      setSelectedSavedProjectionId(String(saved.id));
       setStatus(generatedRows.length ? 'Projection saved.' : 'Baseline source state saved.');
       await refreshSavedProjections();
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
@@ -805,15 +889,19 @@ export default function BaselineBuilder({ isActive = false }) {
   function newBaseline() {
     setSelectedSavedProjectionId('');
     setPendingDeleteProjectionId(null);
+    setPendingDeleteRow(null);
+    setPendingDeleteRateId(null);
     setAccountBalances([]);
     setIncomeSources([]);
     setDebts([]);
     setProjection(null);
     setProjectionTitle('');
     setProjectionNotes('');
+    setProjectionParams({ startMonth: todayDate(), months: 60, endMonth: '' });
     setAccountBalanceForm({ ...initialAccountBalance, date: todayDate() });
     setIncomeForm({ ...initialIncome, startDate: todayDate() });
     setDebtForm(initialDebt);
+    setDebtDateError('');
     setEditingAccountBalanceId(null);
     setEditingIncomeId(null);
     setEditingDebtId(null);
@@ -836,12 +924,12 @@ export default function BaselineBuilder({ isActive = false }) {
             Baseline Title
             <input placeholder="Title here" value={projectionTitle} onChange={(event) => setProjectionTitle(event.target.value)} />
           </label>
-          <button className="outline-button" onClick={saveProjection} disabled={loading || !projectionTitle.trim()}>
+          <button className="outline-button" onClick={saveProjection} disabled={busy || !projectionTitle.trim()}>
             <Save size={16} /> Save
           </button>
           <label>
             Load Saved Projection
-            <select value={selectedSavedProjectionId} onChange={(event) => event.target.value && openProjection(event.target.value)}>
+            <select value={selectedSavedProjectionId} onChange={(event) => event.target.value && openProjection(event.target.value)} disabled={busy}>
               <option value="">Select a saved baseline</option>
               {savedProjections.map((item) => (
                 <option key={item.id} value={item.id}>{item.title} - {shortMonth(item.updated_at)}</option>
@@ -852,7 +940,7 @@ export default function BaselineBuilder({ isActive = false }) {
             {selectedSavedProjection ? (
               String(pendingDeleteProjectionId) === String(selectedSavedProjection.id) ? (
                 <>
-                  <button type="button" className="mini-confirm-button" onClick={() => deleteProjection(selectedSavedProjection)} disabled={loading}>
+                  <button type="button" className="mini-confirm-button" onClick={() => deleteProjection(selectedSavedProjection)} disabled={busy}>
                     Confirm
                   </button>
                   <button type="button" className="icon-button table-action" onClick={() => setPendingDeleteProjectionId(null)} aria-label="Cancel delete">
@@ -864,7 +952,7 @@ export default function BaselineBuilder({ isActive = false }) {
                   type="button"
                   className="icon-button table-action danger-action"
                   onClick={() => setPendingDeleteProjectionId(selectedSavedProjection.id)}
-                  disabled={loading}
+                  disabled={busy}
                   title="Delete selected baseline"
                   aria-label="Delete selected baseline"
                 >
@@ -873,10 +961,10 @@ export default function BaselineBuilder({ isActive = false }) {
               )
             ) : null}
           </div>
-          <button className="outline-button" onClick={newBaseline} disabled={loading}>+ New</button>
+          <button className="outline-button" onClick={newBaseline} disabled={busy}>+ New</button>
         </div>
-        <button className="primary-button" onClick={generateProjection} disabled={loading}>
-          {loading ? 'Working...' : 'Generate Baseline'}
+        <button className="primary-button" onClick={generateProjection} disabled={busy}>
+          {busy ? 'Working...' : 'Generate Baseline'}
         </button>
       </section>
 
@@ -884,10 +972,10 @@ export default function BaselineBuilder({ isActive = false }) {
         <div className="card-header">
           <h2>Income Sources</h2>
           <div className="header-actions">
-            <button className="outline-button" onClick={startAddAccountBalance} disabled={loading} title={accountBalances.length >= MAX_ACCOUNT_BALANCES ? 'Maximum of 15 account balances reached.' : undefined}>
+            <button className="outline-button" onClick={startAddAccountBalance} disabled={busy} title={accountBalances.length >= MAX_ACCOUNT_BALANCES ? 'Maximum of 15 account balances reached.' : undefined}>
               <Plus size={16} /> Account Balance
             </button>
-            <button className="outline-button" onClick={startAddIncome} disabled={loading} title={incomeSources.length >= MAX_INCOME_SOURCES ? 'Maximum of 15 income sources reached.' : undefined}>
+            <button className="outline-button" onClick={startAddIncome} disabled={busy} title={incomeSources.length >= MAX_INCOME_SOURCES ? 'Maximum of 15 income sources reached.' : undefined}>
               <Plus size={16} /> Income
             </button>
           </div>
@@ -900,9 +988,9 @@ export default function BaselineBuilder({ isActive = false }) {
           pendingDeleteRow={pendingDeleteRow}
           onRequestDelete={setPendingDeleteRow}
           onCancelDelete={() => setPendingDeleteRow(null)}
-          loading={loading}
+          loading={busy}
           rows={accountBalances.map((item) => ({
-            id: item.id,
+            id: recordId(item),
             cells: [
               item.name,
               item.account_type || '-',
@@ -910,10 +998,10 @@ export default function BaselineBuilder({ isActive = false }) {
               shortMonth(item.date),
               currencyPrecise(item.amount),
               <InlineAmountInput
-                key={`balance-update-${item.id}`}
+                key={`balance-update-${recordId(item)}`}
                 ariaLabel={`Update ${item.name || 'account'} amount`}
                 value={item.amount}
-                disabled={loading}
+                disabled={busy}
                 onCommit={(value) => inlineUpdateAccountBalanceAmount(item, value)}
               />,
               item.active ? 'Active' : 'Inactive',
@@ -938,7 +1026,7 @@ export default function BaselineBuilder({ isActive = false }) {
             <label>Date<input type="date" value={accountBalanceForm.date} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, date: e.target.value })} required /></label>
             <label>Notes<input placeholder="Optional notes" value={accountBalanceForm.notes} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, notes: e.target.value })} /></label>
             <div className="form-actions-row">
-              <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingAccountBalanceId ? 'Update Balance' : 'Save Balance'}</button>
+              <button className="primary-button" disabled={busy}>{busy ? 'Processing...' : editingAccountBalanceId ? 'Update Balance' : 'Save Balance'}</button>
               <label className="checkbox-line">
                 <input type="checkbox" checked={accountBalanceForm.active} onChange={(e) => setAccountBalanceForm({ ...accountBalanceForm, active: e.target.checked })} /> Active
               </label>
@@ -953,12 +1041,12 @@ export default function BaselineBuilder({ isActive = false }) {
           pendingDeleteRow={pendingDeleteRow}
           onRequestDelete={setPendingDeleteRow}
           onCancelDelete={() => setPendingDeleteRow(null)}
-          loading={loading}
+          loading={busy}
           rows={incomeSources.map((item) => ({
             id: incomeRecordId(item),
             cells: [
               item.label,
-              item.is_account_transfer ? 'Account Transfer' : accountDisplayName(accountBalances.find((account) => Number(account.id) === Number(incomeAccountSelectionId(item)))),
+              item.is_account_transfer ? 'Account Transfer' : accountDisplayName(accountBalances.find((account) => Number(recordId(account)) === Number(incomeAccountSelectionId(item)))),
               shortMonth(item.start_date),
               currencyPrecise(item.amount),
               labelize(item.frequency),
@@ -983,13 +1071,13 @@ export default function BaselineBuilder({ isActive = false }) {
                 <label>From Account
                   <select value={incomeForm.fromAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, fromAccountId: e.target.value })}>
                     <option value="">Select account</option>
-                    {accountOptionsFor(incomeForm.fromAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(incomeForm.fromAccountId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                   </select>
                 </label>
                 <label>To Account
                   <select value={incomeForm.toAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, toAccountId: e.target.value })}>
                     <option value="">Select account</option>
-                    {accountOptionsFor(incomeForm.toAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(incomeForm.toAccountId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                   </select>
                 </label>
               </>
@@ -998,7 +1086,7 @@ export default function BaselineBuilder({ isActive = false }) {
                 <label>Account
                   <select value={incomeForm.accountBalanceId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, accountBalanceId: e.target.value })}>
                     <option value="">Select account</option>
-                    {accountOptionsFor(incomeForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                    {accountOptionsFor(incomeForm.accountBalanceId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                   </select>
                 </label>
                 <label>Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
@@ -1034,7 +1122,7 @@ export default function BaselineBuilder({ isActive = false }) {
             ) : null}
             <label className={incomeForm.isAccountTransfer ? 'wide-field income-notes-field' : 'full-row-field income-notes-field'}>Notes<textarea placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
             <div className="form-actions-row">
-              <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingIncomeId ? 'Update Income' : 'Save Income'}</button>
+              <button className="primary-button" disabled={busy}>{busy ? 'Processing...' : editingIncomeId ? 'Update Income' : 'Save Income'}</button>
               <label className="checkbox-line">
                 <input type="checkbox" checked={incomeForm.isAccountTransfer} onChange={(e) => setIncomeForm({ ...incomeForm, isAccountTransfer: e.target.checked, accountBalanceId: e.target.checked ? '' : incomeForm.accountBalanceId })} /> Account Transfer
               </label>
@@ -1049,7 +1137,7 @@ export default function BaselineBuilder({ isActive = false }) {
       <section className="card data-card debts-data-card" data-baseline-section="debts">
         <div className="card-header">
           <h2>Debts</h2>
-          <button className="outline-button" onClick={startAddDebt} disabled={loading} title={debts.length >= MAX_DEBTS ? 'Maximum of 25 debts reached.' : undefined}>
+          <button className="outline-button" onClick={startAddDebt} disabled={busy} title={debts.length >= MAX_DEBTS ? 'Maximum of 25 debts reached.' : undefined}>
             <Plus size={16} /> Debt
           </button>
         </div>
@@ -1060,9 +1148,9 @@ export default function BaselineBuilder({ isActive = false }) {
           pendingDeleteRow={pendingDeleteRow}
           onRequestDelete={setPendingDeleteRow}
           onCancelDelete={() => setPendingDeleteRow(null)}
-          loading={loading}
+          loading={busy}
           rows={debts.map((item) => ({
-            id: item.id,
+            id: recordId(item),
             cells: [
               item.name,
               labelize(item.debt_type),
@@ -1071,10 +1159,10 @@ export default function BaselineBuilder({ isActive = false }) {
               currencyPrecise(Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0)),
               debtAprLabel(item),
               <InlineAmountInput
-                key={`debt-update-${item.id}`}
+                key={`debt-update-${recordId(item)}`}
                 ariaLabel={`Update ${item.name || 'debt'} balance`}
                 value={item.debt_type === 'other' ? Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0) : item.current_balance}
-                disabled={loading}
+                disabled={busy}
                 onCommit={(value) => inlineUpdateDebtBalance(item, value)}
               />,
             ],
@@ -1114,7 +1202,7 @@ export default function BaselineBuilder({ isActive = false }) {
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Standard APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => setDebtForm({ ...debtForm, aprPercentage: e.target.value })} /></label>
@@ -1127,7 +1215,7 @@ export default function BaselineBuilder({ isActive = false }) {
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Recurring
@@ -1162,7 +1250,7 @@ export default function BaselineBuilder({ isActive = false }) {
               </div>
             </div>
             <div className="form-actions-row">
-              <button className="primary-button" disabled={loading}>{loading ? 'Saving...' : editingDebtId ? 'Update Debt' : 'Save Debt'}</button>
+              <button className="primary-button" disabled={busy}>{busy ? 'Processing...' : editingDebtId ? 'Update Debt' : 'Save Debt'}</button>
               <label className="checkbox-line">
                 <input type="checkbox" checked={debtForm.active} onChange={(e) => setDebtForm({ ...debtForm, active: e.target.checked })} /> Active
               </label>
@@ -1174,7 +1262,7 @@ export default function BaselineBuilder({ isActive = false }) {
                 pendingDeleteRateId={pendingDeleteRateId}
                 onRequestDeleteRate={setPendingDeleteRateId}
                 onCancelDeleteRate={() => setPendingDeleteRateId(null)}
-                loading={loading}
+                loading={busy}
               />
             ) : (
               <p className="form-note">
@@ -1350,11 +1438,13 @@ function InterestSchedule({
         <strong>Interest Schedule</strong>
         <span>{rates.length ? 'APR entries used by projections' : 'No APR entries; projections assume 0%'}</span>
       </div>
-      {rates.length ? rates.map((rate) => (
-        <div className="rate-row" key={rate.id}>
+      {rates.length ? rates.map((rate) => {
+        const rateId = rateRecordId(rate);
+        return (
+        <div className="rate-row" key={rateId}>
           <span>{percent(rate.apr_percentage)}</span>
           <span>{shortMonth(rate.start_date)} to {rate.end_date ? shortMonth(rate.end_date) : 'Indefinite'}</span>
-          {String(pendingDeleteRateId) === String(rate.id) ? (
+          {String(pendingDeleteRateId) === String(rateId) ? (
             <span className="rate-row-actions">
               <button type="button" className="mini-confirm-button" onClick={() => onDeleteRate(rate)} disabled={loading}>
                 Confirm
@@ -1367,7 +1457,7 @@ function InterestSchedule({
             <button
               type="button"
               className="icon-button table-action danger-action"
-              onClick={() => onRequestDeleteRate(rate.id)}
+              onClick={() => onRequestDeleteRate(rateId)}
               disabled={loading}
               title="Delete APR entry"
               aria-label="Delete APR entry"
@@ -1376,7 +1466,8 @@ function InterestSchedule({
             </button>
           )}
         </div>
-      )) : null}
+        );
+      }) : null}
       <p className="form-note">Editing APR fields updates the first APR entry. Add complex promo schedules in SEP 4.</p>
     </div>
   );
@@ -1408,6 +1499,25 @@ function isOneTimeOtherDebt(formOrDebt) {
 
 function debtAccountSelectionId(debt = {}) {
   return debt.legacy_account_balance_id ?? debt.account_balance_id ?? debt.accountBalanceId ?? '';
+}
+
+function recordId(item = {}) {
+  return item.id ?? item.legacyId ?? item._id;
+}
+
+function rateRecordId(item = {}) {
+  return item.id ?? item.legacyId ?? item._id;
+}
+
+async function fetchDebtWithRates(debtId, fallbackDebt = {}) {
+  const [debt, rates] = await Promise.all([
+    foundedApi.getDebt(debtId),
+    foundedApi.listInterestRates(debtId),
+  ]);
+  return {
+    ...debt,
+    interest_rates: rates.length ? rates : fallbackDebt.interest_rates || [],
+  };
 }
 
 function incomeRecordId(source = {}) {
@@ -1468,7 +1578,10 @@ function restoreSourcesFromProjection(snapshot = {}) {
     incomeSources: sortByDisplayOrder(incomeSources),
     debts: sortByDisplayOrder(debts).map((debt) => ({
       ...debt,
-      interest_rates: interestRates.filter((rate) => Number(rate.debt_id) === Number(debt.id)),
+      interest_rates: interestRates.filter((rate) => (
+        Number(rate.debt_id) === Number(recordId(debt))
+        || Number(rate.legacy_debt_id) === Number(recordId(debt))
+      )),
     })),
   };
 }

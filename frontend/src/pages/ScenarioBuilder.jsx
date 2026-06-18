@@ -1,6 +1,6 @@
 import React from 'react';
 import { GitCompare, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
   toDebtPayload,
@@ -16,6 +16,7 @@ import { accountDisplayName } from '../utils/accountLabels.js';
 import { currencyPrecise, labelize, percent, shortMonth } from '../utils/formatters.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
+import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
 import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
 const MAX_INCOME_DEVIATIONS = 10;
@@ -79,6 +80,8 @@ export default function ScenarioBuilder({ isActive = false }) {
   const [debtDateError, setDebtDateError] = useState('');
   const incomeFormRef = useRef(null);
   const debtFormRef = useRef(null);
+  const { isRegenerating, runAutoRegeneration } = useProjectionAutoRegeneration({ setStatus });
+  const busy = loading || isRegenerating;
   const normalizedScenarioRows = useMemo(() => normalizeProjectionRows(scenario?.generated_rows || []), [scenario]);
   const selectedSavedScenario = savedScenarios.find((item) => String(item.id) === String(selectedScenarioId));
   const selectedBaseline = saved.find((item) => String(item.id) === String(baselineId));
@@ -108,15 +111,15 @@ export default function ScenarioBuilder({ isActive = false }) {
 
   function accountOptionsFor(selectedId) {
     const options = [...activeBaselineAccounts];
-    const selected = baselineAccounts.find((account) => String(account.id) === String(selectedId));
-    if (selected && !options.some((account) => String(account.id) === String(selected.id))) {
+    const selected = baselineAccounts.find((account) => String(recordId(account)) === String(selectedId));
+    if (selected && !options.some((account) => String(recordId(account)) === String(recordId(selected)))) {
       options.push(selected);
     }
     return options;
   }
 
   function accountExists(accountId) {
-    return baselineAccounts.some((account) => String(account.id) === String(accountId));
+    return baselineAccounts.some((account) => String(recordId(account)) === String(accountId));
   }
 
   function validateAccountSelection(accountId, label = 'Account') {
@@ -133,6 +136,58 @@ export default function ScenarioBuilder({ isActive = false }) {
     }
     return validateAccountSelection(incomeForm.accountBalanceId);
   }
+
+  const scenarioGenerationPayload = useCallback((nextIncomeOverrides = incomeOverrides, nextDebtOverrides = debtOverrides) => ({
+    baselineProjectionId: baselineId,
+    incomeOverrides: withDisplayOrder(nextIncomeOverrides),
+    debtOverrides: withDisplayOrder(nextDebtOverrides.map((item) => item.debt)),
+    interestRateOverrides: nextDebtOverrides.flatMap((item) => item.rates || (item.rate ? [item.rate] : [])).filter(Boolean),
+  }), [baselineId, debtOverrides, incomeOverrides]);
+
+  const saveGeneratedScenario = useCallback(async (generated) => {
+    const savedScenario = await foundedApi.saveProjection({
+      title: selectedSavedScenario?.title || defaultScenarioTitle(baseline),
+      projectionType: 'scenario',
+      notes: null,
+      assumptionsSnapshot: generated.assumptions_snapshot,
+      generatedRows: generated.generated_rows || [],
+    });
+    setSelectedScenarioId(String(savedScenario.id));
+    setPendingDeleteScenarioId(null);
+    setSavedScenarios((items) => [
+      savedScenario,
+      ...items.filter((item) => String(item.id) !== String(savedScenario.id)),
+    ]);
+    window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
+    return savedScenario;
+  }, [baseline, selectedSavedScenario]);
+
+  const autoSaveScenarioProjection = useCallback(async ({
+    incomeOverrides: nextIncomeOverrides = incomeOverrides,
+    debtOverrides: nextDebtOverrides = debtOverrides,
+    successMessage = 'Scenario regenerated and saved.',
+  } = {}) => {
+    if (!baselineReady) throw new Error('Load a baseline before auto-regeneration.');
+    return runAutoRegeneration({
+      successMessage,
+      task: async (notify) => {
+        notify('Generating scenario projection...');
+        const generated = await foundedApi.generateScenario(scenarioGenerationPayload(nextIncomeOverrides, nextDebtOverrides));
+        notify('Saving regenerated scenario...');
+        await saveGeneratedScenario(generated);
+        setScenario(generated);
+        return generated;
+      },
+    });
+  }, [
+    baselineReady,
+    debtOverrides,
+    incomeOverrides,
+    runAutoRegeneration,
+    saveGeneratedScenario,
+    scenarioGenerationPayload,
+    setScenario,
+  ]);
 
   function startAddIncomeOverride() {
     if (incomeOverrides.length >= MAX_INCOME_DEVIATIONS) {
@@ -198,9 +253,7 @@ export default function ScenarioBuilder({ isActive = false }) {
 
   async function loadBaseline(id) {
     setBaselineId(id);
-    setScenario(null);
-    setSelectedScenarioId('');
-    setPendingDeleteScenarioId(null);
+    resetGeneratedScenarioState();
     if (!id) {
       setBaseline(null);
       return;
@@ -220,13 +273,28 @@ export default function ScenarioBuilder({ isActive = false }) {
   function clearBaseline() {
     setBaselineId('');
     setBaseline(null);
-    setScenario(null);
-    setSelectedScenarioId('');
-    setPendingDeleteScenarioId(null);
+    resetGeneratedScenarioState();
+    setIncomeOverrides([]);
+    setDebtOverrides([]);
+    setIncomeForm(incomeTemplate);
+    setDebtForm(debtTemplate);
+    setEditingIncomeOverrideIndex(null);
+    setEditingDebtOverrideIndex(null);
+    setShowIncomeForm(false);
+    setShowDebtForm(false);
+    setDebtAprError('');
+    setDebtDateError('');
+    setPendingDeleteRow(null);
     setStatus('Baseline selection cleared.');
   }
 
-  function addIncomeOverride(event) {
+  function resetGeneratedScenarioState() {
+    setScenario(null);
+    setSelectedScenarioId('');
+    setPendingDeleteScenarioId(null);
+  }
+
+  async function addIncomeOverride(event) {
     event.preventDefault();
     if (!incomeForm.label.trim() || incomeForm.amount === '') {
       setStatus('Name and Changed Amount are required.');
@@ -238,17 +306,28 @@ export default function ScenarioBuilder({ isActive = false }) {
       return;
     }
     const nextIncome = toIncomePayload(incomeForm, { startDate: baselineStartMonth(baseline), frequency: 'monthly' });
-    setIncomeOverrides((items) => {
-      if (editingIncomeOverrideIndex === null) return [...items, nextIncome];
-      return items.map((item, index) => (index === editingIncomeOverrideIndex ? nextIncome : item));
-    });
-    setIncomeForm(incomeTemplate);
-    setEditingIncomeOverrideIndex(null);
-    setShowIncomeForm(false);
-    setScenario(null);
+    const nextIncomeOverrides = editingIncomeOverrideIndex === null
+      ? [...incomeOverrides, nextIncome]
+      : incomeOverrides.map((item, index) => (index === editingIncomeOverrideIndex ? nextIncome : item));
+    setLoading(true);
+    try {
+      setIncomeOverrides(nextIncomeOverrides);
+      setIncomeForm(incomeTemplate);
+      setEditingIncomeOverrideIndex(null);
+      setShowIncomeForm(false);
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        incomeOverrides: nextIncomeOverrides,
+        successMessage: editingIncomeOverrideIndex === null ? 'Income deviation added. Scenario regenerated and saved.' : 'Income deviation updated. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function addDebtOverride(event) {
+  async function addDebtOverride(event) {
     event.preventDefault();
     if (!debtForm.name.trim() || !debtForm.debtType || (!isOtherDebt(debtForm) && debtForm.currentBalance === '')) {
       setStatus(isOtherDebt(debtForm) ? 'Debt Name and Debt Type are required.' : 'Debt Name, Debt Type, and Balance are required.');
@@ -280,17 +359,28 @@ export default function ScenarioBuilder({ isActive = false }) {
     };
     const debt = { ...toDebtPayload(normalizedDebtForm, { startDate: defaultStartDate }), id: temporaryId };
     const rates = [toRegularRatePayload(normalizedDebtForm, temporaryId), toPromoRatePayload(normalizedDebtForm, temporaryId)].filter(Boolean);
-    setDebtOverrides((items) => {
-      const next = { debt, rates };
-      if (editingDebtOverrideIndex === null) return [...items, next];
-      return items.map((item, index) => (index === editingDebtOverrideIndex ? next : item));
-    });
-    setDebtForm(debtTemplate);
-    setDebtAprError('');
-    setDebtDateError('');
-    setEditingDebtOverrideIndex(null);
-    setShowDebtForm(false);
-    setScenario(null);
+    const next = { debt, rates };
+    const nextDebtOverrides = editingDebtOverrideIndex === null
+      ? [...debtOverrides, next]
+      : debtOverrides.map((item, index) => (index === editingDebtOverrideIndex ? next : item));
+    setLoading(true);
+    try {
+      setDebtOverrides(nextDebtOverrides);
+      setDebtForm(debtTemplate);
+      setDebtAprError('');
+      setDebtDateError('');
+      setEditingDebtOverrideIndex(null);
+      setShowDebtForm(false);
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        debtOverrides: nextDebtOverrides,
+        successMessage: editingDebtOverrideIndex === null ? 'Debt deviation added. Scenario regenerated and saved.' : 'Debt deviation updated. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function startEditDebtOverride(item, index) {
@@ -323,35 +413,58 @@ export default function ScenarioBuilder({ isActive = false }) {
     setShowDebtForm(true);
   }
 
-  function deleteDebtOverride(index) {
-    setDebtOverrides((items) => items.filter((_, itemIndex) => itemIndex !== index));
-    setPendingDeleteRow(null);
-    if (editingDebtOverrideIndex === index) {
-      setEditingDebtOverrideIndex(null);
-      setDebtForm(debtTemplate);
-      setDebtAprError('');
-      setDebtDateError('');
-      setShowDebtForm(false);
-    } else if (editingDebtOverrideIndex !== null && editingDebtOverrideIndex > index) {
-      setEditingDebtOverrideIndex(editingDebtOverrideIndex - 1);
+  async function deleteDebtOverride(index) {
+    const nextDebtOverrides = debtOverrides.filter((_, itemIndex) => itemIndex !== index);
+    setLoading(true);
+    try {
+      setDebtOverrides(nextDebtOverrides);
+      setPendingDeleteRow(null);
+      if (editingDebtOverrideIndex === index) {
+        setEditingDebtOverrideIndex(null);
+        setDebtForm(debtTemplate);
+        setDebtAprError('');
+        setDebtDateError('');
+        setShowDebtForm(false);
+      } else if (editingDebtOverrideIndex !== null && editingDebtOverrideIndex > index) {
+        setEditingDebtOverrideIndex(editingDebtOverrideIndex - 1);
+      }
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        debtOverrides: nextDebtOverrides,
+        successMessage: 'Debt deviation deleted. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
     }
-    setScenario(null);
   }
 
-  function inlineUpdateIncomeOverrideAmount(index, value) {
+  async function inlineUpdateIncomeOverrideAmount(index, value) {
     const amount = parseInlineAmount(value);
     if (amount === null) return;
-    setIncomeOverrides((items) => items.map((item, itemIndex) => (
+    const nextIncomeOverrides = incomeOverrides.map((item, itemIndex) => (
       itemIndex === index ? { ...item, amount } : item
-    )));
-    setScenario(null);
-    setStatus('Income deviation amount updated.');
+    ));
+    setLoading(true);
+    try {
+      setIncomeOverrides(nextIncomeOverrides);
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        incomeOverrides: nextIncomeOverrides,
+        successMessage: 'Income deviation amount updated. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function inlineUpdateDebtOverrideAmount(index, value) {
+  async function inlineUpdateDebtOverrideAmount(index, value) {
     const amount = parseInlineAmount(value);
     if (amount === null) return;
-    setDebtOverrides((items) => items.map((item, itemIndex) => {
+    const nextDebtOverrides = debtOverrides.map((item, itemIndex) => {
       if (itemIndex !== index) return item;
       const otherDebt = item.debt?.debt_type === 'other';
       const nextDebt = otherDebt
@@ -366,9 +479,20 @@ export default function ScenarioBuilder({ isActive = false }) {
           starting_balance: amount,
         };
       return { ...item, debt: nextDebt };
-    }));
-    setScenario(null);
-    setStatus('Debt deviation amount updated.');
+    });
+    setLoading(true);
+    try {
+      setDebtOverrides(nextDebtOverrides);
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        debtOverrides: nextDebtOverrides,
+        successMessage: 'Debt deviation amount updated. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function startEditIncomeOverride(item, index) {
@@ -390,28 +514,35 @@ export default function ScenarioBuilder({ isActive = false }) {
     setShowIncomeForm(true);
   }
 
-  function deleteIncomeOverride(index) {
-    setIncomeOverrides((items) => items.filter((_, itemIndex) => itemIndex !== index));
-    setPendingDeleteRow(null);
-    if (editingIncomeOverrideIndex === index) {
-      setEditingIncomeOverrideIndex(null);
-      setIncomeForm(incomeTemplate);
-      setShowIncomeForm(false);
-    } else if (editingIncomeOverrideIndex !== null && editingIncomeOverrideIndex > index) {
-      setEditingIncomeOverrideIndex(editingIncomeOverrideIndex - 1);
+  async function deleteIncomeOverride(index) {
+    const nextIncomeOverrides = incomeOverrides.filter((_, itemIndex) => itemIndex !== index);
+    setLoading(true);
+    try {
+      setIncomeOverrides(nextIncomeOverrides);
+      setPendingDeleteRow(null);
+      if (editingIncomeOverrideIndex === index) {
+        setEditingIncomeOverrideIndex(null);
+        setIncomeForm(incomeTemplate);
+        setShowIncomeForm(false);
+      } else if (editingIncomeOverrideIndex !== null && editingIncomeOverrideIndex > index) {
+        setEditingIncomeOverrideIndex(editingIncomeOverrideIndex - 1);
+      }
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        incomeOverrides: nextIncomeOverrides,
+        successMessage: 'Income deviation deleted. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
     }
-    setScenario(null);
   }
 
   async function generateScenario() {
     setLoading(true);
     try {
-      const generated = await foundedApi.generateScenario({
-        baselineProjectionId: baselineId,
-        incomeOverrides: withDisplayOrder(incomeOverrides),
-        debtOverrides: withDisplayOrder(debtOverrides.map((item) => item.debt)),
-        interestRateOverrides: debtOverrides.flatMap((item) => item.rates || (item.rate ? [item.rate] : [])).filter(Boolean),
-      });
+      const generated = await foundedApi.generateScenario(scenarioGenerationPayload());
       setScenario(generated);
       setStatus('Scenario generated.');
     } catch (error) {
@@ -424,22 +555,8 @@ export default function ScenarioBuilder({ isActive = false }) {
   async function saveScenario() {
     setLoading(true);
     try {
-      const savedScenario = await foundedApi.saveScenario({
-        baselineProjectionId: baselineId,
-        incomeOverrides: withDisplayOrder(incomeOverrides),
-        debtOverrides: withDisplayOrder(debtOverrides.map((item) => item.debt)),
-        interestRateOverrides: debtOverrides.flatMap((item) => item.rates || (item.rate ? [item.rate] : [])).filter(Boolean),
-        title: selectedSavedScenario?.title || defaultScenarioTitle(baseline),
-        notes: null,
-      });
-      setSelectedScenarioId(String(savedScenario.id));
-      setPendingDeleteScenarioId(null);
-      setSavedScenarios((items) => [
-        savedScenario,
-        ...items.filter((item) => item.id !== savedScenario.id),
-      ]);
+      await saveGeneratedScenario(scenario);
       setStatus('Scenario saved.');
-      window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -513,7 +630,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           <div className="scenario-control-row">
             <label>
               Baseline Projection
-              <select value={baselineId} onChange={(event) => loadBaseline(event.target.value)}>
+              <select value={baselineId} onChange={(event) => loadBaseline(event.target.value)} disabled={busy}>
                 <option value="">Select a saved baseline</option>
                 {saved.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -532,7 +649,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           <div className="scenario-load-control">
             <label>
               Load Scenario
-              <select value={selectedScenarioId} onChange={(event) => loadSavedScenario(event.target.value)}>
+              <select value={selectedScenarioId} onChange={(event) => loadSavedScenario(event.target.value)} disabled={busy}>
                 <option value="">Select a saved scenario</option>
                 {savedScenarios.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -549,7 +666,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                       type="button"
                       className="mini-confirm-button"
                       onClick={() => deleteScenario(savedScenarios.find((item) => String(item.id) === String(selectedScenarioId)))}
-                      disabled={loading}
+                      disabled={busy}
                     >
                       Confirm
                     </button>
@@ -562,7 +679,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                     type="button"
                     className="icon-button table-action danger-action"
                     onClick={() => setPendingDeleteScenarioId(selectedScenarioId)}
-                    disabled={loading}
+                    disabled={busy}
                     title="Delete selected scenario"
                     aria-label="Delete selected scenario"
                   >
@@ -572,14 +689,14 @@ export default function ScenarioBuilder({ isActive = false }) {
               ) : null}
             </div>
           </div>
-          <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={!scenario || loading || !baselineReady}>
+          <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={!scenario || busy || !baselineReady}>
             <Save size={16} /> Save
           </button>
-          <button className="primary-button" disabled={!baselineReady || loading} onClick={generateScenario}>
-            {loading ? 'Working...' : 'Generate Scenario'}
+          <button className="primary-button" disabled={!baselineReady || busy} onClick={generateScenario}>
+            {busy ? 'Working...' : 'Generate Scenario'}
           </button>
           {baselineReady ? (
-            <button type="button" className="ghost-button" onClick={clearBaseline} disabled={loading}>
+            <button type="button" className="ghost-button" onClick={clearBaseline} disabled={busy}>
               Clear Baseline
             </button>
           ) : null}
@@ -589,7 +706,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Income Deviations</h2>
-          <button className="outline-button" onClick={startAddIncomeOverride} disabled={showIncomeForm} title={incomeOverrides.length >= MAX_INCOME_DEVIATIONS ? 'Maximum of 10 income deviations reached.' : undefined}>
+          <button className="outline-button" onClick={startAddIncomeOverride} disabled={busy || showIncomeForm} title={incomeOverrides.length >= MAX_INCOME_DEVIATIONS ? 'Maximum of 10 income deviations reached.' : undefined}>
             <Plus size={16} /> Income Deviation
           </button>
         </div>
@@ -600,7 +717,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           pendingDeleteRow={pendingDeleteRow}
           onRequestDelete={setPendingDeleteRow}
           onCancelDelete={() => setPendingDeleteRow(null)}
-          loading={loading}
+          loading={busy}
           rows={incomeOverrides.map((item, index) => ({
             id: `${item.label}-${index}`,
             cells: [
@@ -613,6 +730,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                 key={`income-override-update-${index}`}
                 ariaLabel={`Update ${item.label || 'income deviation'} amount`}
                 value={item.amount}
+                disabled={busy}
                 onCommit={(value) => inlineUpdateIncomeOverrideAmount(index, value)}
               />,
               item.active === false ? 'Inactive' : 'Active',
@@ -641,13 +759,13 @@ export default function ScenarioBuilder({ isActive = false }) {
                   <label>From Account
                     <select value={incomeForm.fromAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, fromAccountId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(incomeForm.fromAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(incomeForm.fromAccountId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>To Account
                     <select value={incomeForm.toAccountId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, toAccountId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(incomeForm.toAccountId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(incomeForm.toAccountId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
@@ -657,7 +775,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                   <label>Account
                     <select value={incomeForm.accountBalanceId || ''} onChange={(e) => setIncomeForm({ ...incomeForm, accountBalanceId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(incomeForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(incomeForm.accountBalanceId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Changed Amount<input type="number" min="0" placeholder="0.00" value={incomeForm.amount} onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })} required /></label>
@@ -679,7 +797,7 @@ export default function ScenarioBuilder({ isActive = false }) {
               <label className={incomeForm.isAccountTransfer ? 'wide-field income-notes-field' : 'wide-field income-notes-field'}>Notes<textarea placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
             </div>
             <div className="form-actions-row">
-              <button className="primary-button">{editingIncomeOverrideIndex === null ? 'Save Income Change' : 'Update Income Change'}</button>
+              <button className="primary-button" disabled={busy}>{busy ? 'Processing...' : editingIncomeOverrideIndex === null ? 'Save Income Change' : 'Update Income Change'}</button>
               <label className="checkbox-line">
                 <input type="checkbox" checked={incomeForm.isAccountTransfer} onChange={(e) => setIncomeForm({ ...incomeForm, isAccountTransfer: e.target.checked, accountBalanceId: e.target.checked ? '' : incomeForm.accountBalanceId })} /> Account Transfer
               </label>
@@ -694,7 +812,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Debt Deviations</h2>
-          <button className="outline-button" onClick={startAddDebtOverride} disabled={showDebtForm} title={debtOverrides.length >= MAX_DEBT_DEVIATIONS ? 'Maximum of 10 debt deviations reached.' : undefined}>
+          <button className="outline-button" onClick={startAddDebtOverride} disabled={busy || showDebtForm} title={debtOverrides.length >= MAX_DEBT_DEVIATIONS ? 'Maximum of 10 debt deviations reached.' : undefined}>
             <Plus size={16} /> Debt Deviation
           </button>
         </div>
@@ -705,9 +823,9 @@ export default function ScenarioBuilder({ isActive = false }) {
           pendingDeleteRow={pendingDeleteRow}
           onRequestDelete={setPendingDeleteRow}
           onCancelDelete={() => setPendingDeleteRow(null)}
-          loading={loading}
+          loading={busy}
           rows={debtOverrides.map((item, index) => ({
-            id: item.debt.id || index,
+            id: recordId(item.debt) || index,
             cells: [
               item.debt.name,
               labelize(item.debt.debt_type),
@@ -720,6 +838,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                 key={`debt-override-update-${index}`}
                 ariaLabel={`Update ${item.debt.name || 'debt deviation'} amount`}
                 value={item.debt.debt_type === 'other' ? Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0) : item.debt.current_balance}
+                disabled={busy}
                 onCommit={(value) => inlineUpdateDebtOverrideAmount(index, value)}
               />,
             ],
@@ -770,7 +889,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Standard APR %<input type="number" min="0" step="0.01" placeholder="0.00" value={debtForm.aprPercentage} onChange={(e) => {
@@ -787,7 +906,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                   <label>Account
                     <select value={debtForm.accountBalanceId || ''} onChange={(e) => setDebtForm({ ...debtForm, accountBalanceId: e.target.value })}>
                       <option value="">Select account</option>
-                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={account.id} value={account.id}>{accountDisplayName(account)}</option>)}
+                      {accountOptionsFor(debtForm.accountBalanceId).map((account) => <option key={recordId(account)} value={recordId(account)}>{accountDisplayName(account)}</option>)}
                     </select>
                   </label>
                   <label>Recurring
@@ -822,7 +941,7 @@ export default function ScenarioBuilder({ isActive = false }) {
               </div>
             </div>
             <div className="form-actions-row">
-              <button className="primary-button">{editingDebtOverrideIndex === null ? 'Save Debt Change' : 'Update Debt Change'}</button>
+              <button className="primary-button" disabled={busy}>{busy ? 'Processing...' : editingDebtOverrideIndex === null ? 'Save Debt Change' : 'Update Debt Change'}</button>
               <label className="checkbox-line">
                 <input type="checkbox" checked={debtForm.active} onChange={(e) => setDebtForm({ ...debtForm, active: e.target.checked })} /> Active
               </label>
@@ -1104,13 +1223,13 @@ function restoreScenarioOverrides(assumptions = {}) {
     .filter((item) => {
       const baselineItem = baselineDebts.find((candidate) => debtIdentityMatches(candidate, item));
       const debtChanged = !baselineItem || comparableDebt(baselineItem) !== comparableDebt(item);
-      const baselineDebtRates = baselineRates.filter((rate) => sameId(rate.debt_id, item.id));
-      const scenarioDebtRates = scenarioRates.filter((rate) => sameId(rate.debt_id, item.id));
+      const baselineDebtRates = baselineRates.filter((rate) => sameId(rateDebtId(rate), recordId(item)));
+      const scenarioDebtRates = scenarioRates.filter((rate) => sameId(rateDebtId(rate), recordId(item)));
       return debtChanged || comparableRates(baselineDebtRates) !== comparableRates(scenarioDebtRates);
     })
     .map((debt) => ({
       debt,
-      rates: scenarioRates.filter((rate) => sameId(rate.debt_id, debt.id)),
+      rates: scenarioRates.filter((rate) => sameId(rateDebtId(rate), recordId(debt))),
     }));
 
   return { incomeOverrides, debtOverrides };
@@ -1119,7 +1238,7 @@ function restoreScenarioOverrides(assumptions = {}) {
 function buildDebtOverrideRows(debts = [], rates = []) {
   return debts.map((debt) => ({
     debt,
-    rates: rates.filter((rate) => sameId(rate.debt_id, debt.id)),
+    rates: rates.filter((rate) => sameId(rateDebtId(rate), recordId(debt))),
   }));
 }
 
@@ -1142,6 +1261,14 @@ function debtIdentityMatches(left, right) {
 
 function sameId(left, right) {
   return String(left) === String(right);
+}
+
+function recordId(item = {}) {
+  return item.id ?? item.legacyId ?? item._id;
+}
+
+function rateDebtId(rate = {}) {
+  return rate.legacy_debt_id ?? rate.debt_id ?? rate.debtId ?? '';
 }
 
 function comparableIncome(item = {}) {
