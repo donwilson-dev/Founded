@@ -301,7 +301,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     setDebtForm({
       ...debtTemplate,
       name: item.debt.name || '',
-      accountBalanceId: item.debt.account_balance_id ?? item.debt.accountBalanceId ?? '',
+      accountBalanceId: debtAccountSelectionId(item.debt),
       debtType: item.debt.debt_type || 'credit_card',
       currentBalance: item.debt.current_balance ?? '',
       minimumMonthlyPayment: item.debt.minimum_monthly_payment ?? '',
@@ -376,10 +376,10 @@ export default function ScenarioBuilder({ isActive = false }) {
     setIncomeForm({
       ...incomeTemplate,
       label: item.label || '',
-      accountBalanceId: item.account_balance_id ?? item.accountBalanceId ?? '',
+      accountBalanceId: incomeAccountSelectionId(item),
       isAccountTransfer: Boolean(item.is_account_transfer ?? item.isAccountTransfer),
-      fromAccountId: item.from_account_id ?? item.fromAccountId ?? '',
-      toAccountId: item.to_account_id ?? item.toAccountId ?? '',
+      fromAccountId: incomeFromAccountSelectionId(item),
+      toAccountId: incomeToAccountSelectionId(item),
       amount: item.amount ?? '',
       startDate: item.start_date || '',
       endDate: item.end_date || '',
@@ -1146,10 +1146,10 @@ function sameId(left, right) {
 
 function comparableIncome(item = {}) {
   return JSON.stringify({
-    account_balance_id: item.account_balance_id || null,
+    account_balance_id: incomeAccountSelectionId(item) || null,
     is_account_transfer: Boolean(item.is_account_transfer),
-    from_account_id: item.from_account_id || null,
-    to_account_id: item.to_account_id || null,
+    from_account_id: incomeFromAccountSelectionId(item) || null,
+    to_account_id: incomeToAccountSelectionId(item) || null,
     label: item.label || '',
     amount: Number(item.amount || 0),
     start_date: item.start_date || '',
@@ -1162,7 +1162,7 @@ function comparableIncome(item = {}) {
 
 function comparableDebt(item = {}) {
   return JSON.stringify({
-    account_balance_id: item.account_balance_id || null,
+    account_balance_id: debtAccountSelectionId(item) || null,
     name: item.name || '',
     debt_type: item.debt_type || '',
     current_balance: Number(item.current_balance || 0),
@@ -1176,6 +1176,22 @@ function comparableDebt(item = {}) {
     active: item.active !== false,
     notes: item.notes || null,
   });
+}
+
+function incomeAccountSelectionId(source = {}) {
+  return source.legacy_account_balance_id ?? source.account_balance_id ?? source.accountBalanceId ?? '';
+}
+
+function incomeFromAccountSelectionId(source = {}) {
+  return source.legacy_from_account_id ?? source.from_account_id ?? source.fromAccountId ?? '';
+}
+
+function incomeToAccountSelectionId(source = {}) {
+  return source.legacy_to_account_id ?? source.to_account_id ?? source.toAccountId ?? '';
+}
+
+function debtAccountSelectionId(debt = {}) {
+  return debt.legacy_account_balance_id ?? debt.account_balance_id ?? debt.accountBalanceId ?? '';
 }
 
 function comparableRates(rates = []) {

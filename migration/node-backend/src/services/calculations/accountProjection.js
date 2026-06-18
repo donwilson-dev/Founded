@@ -1,4 +1,9 @@
-const { firstOfMonth, formatDate, occurrenceCountForMonth } = require('./dateRecurrenceHelpers');
+const {
+  firstOfMonth,
+  formatDate,
+  occurrenceCountForMonth,
+  occurrenceDatesForMonth,
+} = require('./dateRecurrenceHelpers');
 const {
   accountLabel,
   isBill,
@@ -90,6 +95,18 @@ function activityFor(activity, key) {
   return activity.get(key);
 }
 
+function availableAccountBalance(balances, accountActivity, key) {
+  const activity = activityFor(accountActivity, key);
+  return roundCurrency(
+    (balances.get(key) || 0.0) +
+    activity.income -
+    activity.debt_payments -
+    activity.bills +
+    activity.transfers_in -
+    activity.transfers_out,
+  );
+}
+
 function generateAccountProjectionRows(incomeSources, debts, projectionRows, accountBalances = null) {
   if (!projectionRows || projectionRows.length === 0) {
     return [];
@@ -153,13 +170,10 @@ function generateAccountProjectionRows(incomeSources, debts, projectionRows, acc
   for (const projectionRow of projectionRows) {
     const month = firstOfMonth(projectionRow.month);
     const accountActivity = activityByAccountKey(accountOrder);
+    const transferEvents = [];
 
-    for (const source of incomeData) {
+    incomeData.forEach((source, sourceIndex) => {
       if (source.is_account_transfer) {
-        const amount = transferAmountForMonth(source, month);
-        if (amount === 0) {
-          continue;
-        }
         const fromKey = ensureAccount(source.from_account_id);
         const toKey = ensureAccount(source.to_account_id);
         if (!balances.has(fromKey)) {
@@ -168,8 +182,22 @@ function generateAccountProjectionRows(incomeSources, debts, projectionRows, acc
         if (!balances.has(toKey)) {
           balances.set(toKey, 0.0);
         }
-        activityFor(accountActivity, fromKey).transfers_out += amount;
-        activityFor(accountActivity, toKey).transfers_in += amount;
+        const amount = Number(source.amount || 0);
+        for (const occurrenceDate of occurrenceDatesForMonth(
+          source.frequency ?? 'monthly',
+          source.start_date,
+          source.end_date,
+          month,
+          { active: source.active ?? true },
+        )) {
+          transferEvents.push({
+            occurrenceDate,
+            sourceIndex,
+            amount,
+            fromKey,
+            toKey,
+          });
+        }
       } else {
         const amount = monthlyIncomeAmount(source, month);
         const key = ensureAccount(source.account_balance_id);
@@ -178,7 +206,7 @@ function generateAccountProjectionRows(incomeSources, debts, projectionRows, acc
         }
         activityFor(accountActivity, key).income += amount;
       }
-    }
+    });
 
     for (const debt of debtData) {
       const key = ensureAccount(debt.account_balance_id);
@@ -195,6 +223,22 @@ function generateAccountProjectionRows(incomeSources, debts, projectionRows, acc
         activityFor(accountActivity, key).debt_payments += Number(projectionRow[`${name} Payment`] || 0);
       }
     }
+
+    transferEvents
+      .sort((left, right) =>
+        left.occurrenceDate.getTime() - right.occurrenceDate.getTime() ||
+        left.sourceIndex - right.sourceIndex
+      )
+      .forEach(({ amount, fromKey, toKey }) => {
+        if (amount <= 0) {
+          return;
+        }
+        if (availableAccountBalance(balances, accountActivity, fromKey) < amount) {
+          return;
+        }
+        activityFor(accountActivity, fromKey).transfers_out += amount;
+        activityFor(accountActivity, toKey).transfers_in += amount;
+      });
 
     const accountRows = [];
     for (const key of accountOrder) {

@@ -282,9 +282,9 @@ export default function BaselineBuilder({ isActive = false }) {
   function accountIsReferenced(accountId) {
     const matches = (value) => String(value || '') === String(accountId);
     return incomeSources.some((source) => (
-      matches(source.account_balance_id ?? source.accountBalanceId)
-      || matches(source.from_account_id ?? source.fromAccountId)
-      || matches(source.to_account_id ?? source.toAccountId)
+      matches(incomeAccountSelectionId(source))
+      || matches(incomeFromAccountSelectionId(source))
+      || matches(incomeToAccountSelectionId(source))
     )) || debts.some((debt) => (
       matches(debt.legacy_account_balance_id)
       || matches(debt.account_balance_id ?? debt.accountBalanceId)
@@ -348,13 +348,13 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   function startEditIncome(source) {
-    setEditingIncomeId(source.id);
+    setEditingIncomeId(incomeRecordId(source));
     setIncomeForm({
       label: source.label || '',
-      accountBalanceId: source.account_balance_id ?? source.accountBalanceId ?? '',
+      accountBalanceId: incomeAccountSelectionId(source),
       isAccountTransfer: Boolean(source.is_account_transfer ?? source.isAccountTransfer),
-      fromAccountId: source.from_account_id ?? source.fromAccountId ?? '',
-      toAccountId: source.to_account_id ?? source.toAccountId ?? '',
+      fromAccountId: incomeFromAccountSelectionId(source),
+      toAccountId: incomeToAccountSelectionId(source),
       amount: source.amount ?? '',
       startDate: source.start_date || todayDate(),
       endDate: source.end_date || '',
@@ -502,7 +502,7 @@ export default function BaselineBuilder({ isActive = false }) {
     try {
       if (editingIncomeId) {
         const updated = await foundedApi.updateIncomeSource(editingIncomeId, toIncomePayload(incomeForm));
-        setIncomeSources((items) => items.map((item) => (item.id === updated.id ? updated : item)));
+        setIncomeSources((items) => items.map((item) => (String(incomeRecordId(item)) === String(incomeRecordId(updated)) ? updated : item)));
         markWorkingBaselineChanged();
         setStatus('Income source updated.');
       } else {
@@ -521,11 +521,12 @@ export default function BaselineBuilder({ isActive = false }) {
   }
 
   async function deleteIncome(source) {
+    const sourceId = incomeRecordId(source);
     setLoading(true);
     try {
-      await foundedApi.deleteIncomeSource(source.id);
-      setIncomeSources((items) => items.filter((item) => item.id !== source.id));
-      if (String(editingIncomeId) === String(source.id)) {
+      await foundedApi.deleteIncomeSource(sourceId);
+      setIncomeSources((items) => items.filter((item) => String(incomeRecordId(item)) !== String(sourceId)));
+      if (String(editingIncomeId) === String(sourceId)) {
         cancelIncomeForm();
       }
       markWorkingBaselineChanged();
@@ -954,10 +955,10 @@ export default function BaselineBuilder({ isActive = false }) {
           onCancelDelete={() => setPendingDeleteRow(null)}
           loading={loading}
           rows={incomeSources.map((item) => ({
-            id: item.id,
+            id: incomeRecordId(item),
             cells: [
               item.label,
-              item.is_account_transfer ? 'Account Transfer' : accountDisplayName(accountBalances.find((account) => Number(account.id) === Number(item.account_balance_id))),
+              item.is_account_transfer ? 'Account Transfer' : accountDisplayName(accountBalances.find((account) => Number(account.id) === Number(incomeAccountSelectionId(item)))),
               shortMonth(item.start_date),
               currencyPrecise(item.amount),
               labelize(item.frequency),
@@ -1407,6 +1408,22 @@ function isOneTimeOtherDebt(formOrDebt) {
 
 function debtAccountSelectionId(debt = {}) {
   return debt.legacy_account_balance_id ?? debt.account_balance_id ?? debt.accountBalanceId ?? '';
+}
+
+function incomeRecordId(source = {}) {
+  return source.id ?? source.legacyId ?? source._id;
+}
+
+function incomeAccountSelectionId(source = {}) {
+  return source.legacy_account_balance_id ?? source.account_balance_id ?? source.accountBalanceId ?? '';
+}
+
+function incomeFromAccountSelectionId(source = {}) {
+  return source.legacy_from_account_id ?? source.from_account_id ?? source.fromAccountId ?? '';
+}
+
+function incomeToAccountSelectionId(source = {}) {
+  return source.legacy_to_account_id ?? source.to_account_id ?? source.toAccountId ?? '';
 }
 
 function normalizeDebtFormForType(form) {

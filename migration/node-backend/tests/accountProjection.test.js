@@ -320,7 +320,7 @@ test('account projection compatibility fallbacks match FastAPI for unassigned, m
       ],
       income_sources: [
         income({ id: 1, account_balance_id: null, label: 'Unassigned Income', amount: 100 }),
-        transfer({ id: 2, amount: 50, from_account_id: 99, to_account_id: null }),
+        transfer({ id: 2, amount: 50, from_account_id: 99, to_account_id: null, active: false }),
       ],
       debts: [
         debt({ id: 1, account_balance_id: 42, name: 'Missing Debt Account', debt_type: 'credit_card' }),
@@ -348,4 +348,85 @@ test('account projection compatibility fallbacks match FastAPI for unassigned, m
   ];
 
   assertParity(cases);
+});
+
+test('account projection prevents transfers from overdrawing source accounts', () => {
+  const rows = accounts.generateAccountProjectionRows(
+    [
+      transfer({ id: 1, amount: 75, frequency: 'monthly', from_account_id: 1, to_account_id: 2 }),
+      transfer({ id: 2, amount: 100, frequency: 'monthly', from_account_id: 3, to_account_id: 2 }),
+      transfer({ id: 3, amount: 150, frequency: 'monthly', from_account_id: 4, to_account_id: 2 }),
+      transfer({ id: 4, amount: 100, frequency: 'weekly', from_account_id: 5, to_account_id: 2, start_date: '2026-01-01' }),
+    ],
+    [],
+    [
+      { month: '2026-01-01', 'Monthly Surplus': 0, 'Cash Balance': 825 },
+      { month: '2026-02-01', 'Monthly Surplus': 0, 'Cash Balance': 825 },
+    ],
+    [
+      account({ id: 1, amount: 100, name: 'Funded Checking' }),
+      account({ id: 2, amount: 0, name: 'Joint Checking' }),
+      account({ id: 3, amount: 100, name: 'Exact Checking' }),
+      account({ id: 4, amount: 100, name: 'Short Checking' }),
+      account({ id: 5, amount: 250, name: 'Weekly Checking' }),
+    ],
+  );
+
+  const janAccounts = new Map(rows[0].accounts.map((item) => [item.account_balance_id, item]));
+  assert.equal(janAccounts.get(1).transfers_out, 75);
+  assert.equal(janAccounts.get(1).cash_balance, 25);
+  assert.equal(janAccounts.get(3).transfers_out, 100);
+  assert.equal(janAccounts.get(3).cash_balance, 0);
+  assert.equal(janAccounts.get(4).transfers_out, 0);
+  assert.equal(janAccounts.get(4).cash_balance, 100);
+  assert.equal(janAccounts.get(5).transfers_out, 200);
+  assert.equal(janAccounts.get(5).cash_balance, 50);
+  assert.equal(janAccounts.get(2).transfers_in, 375);
+  assert.equal(janAccounts.get(2).cash_balance, 375);
+
+  const febAccounts = new Map(rows[1].accounts.map((item) => [item.account_balance_id, item]));
+  assert.equal(febAccounts.get(1).transfers_out, 0);
+  assert.equal(febAccounts.get(3).transfers_out, 0);
+  assert.equal(febAccounts.get(4).transfers_out, 0);
+  assert.equal(febAccounts.get(5).transfers_out, 0);
+  assert.equal(febAccounts.get(1).cash_balance, 25);
+  assert.equal(febAccounts.get(3).cash_balance, 0);
+  assert.equal(febAccounts.get(4).cash_balance, 100);
+  assert.equal(febAccounts.get(5).cash_balance, 50);
+  assert.equal(febAccounts.get(2).cash_balance, 375);
+});
+
+test('account projection protects source accounts after same-month income, debts, and bills', () => {
+  const rows = accounts.generateAccountProjectionRows(
+    [
+      income({ id: 1, account_balance_id: 1, amount: 25, frequency: 'monthly' }),
+      transfer({ id: 2, amount: 50, frequency: 'monthly', from_account_id: 1, to_account_id: 2 }),
+    ],
+    [
+      debt({ id: 1, account_balance_id: 1, name: 'Card', debt_type: 'credit_card' }),
+      debt({ id: 2, account_balance_id: 1, name: 'Utility', debt_type: 'other' }),
+    ],
+    [
+      {
+        month: '2026-01-01',
+        'Card Payment': 80,
+        'Utility Bill': 20,
+        'Monthly Surplus': -75,
+        'Cash Balance': 25,
+      },
+    ],
+    [
+      account({ id: 1, amount: 100, name: 'Source Checking' }),
+      account({ id: 2, amount: 0, name: 'Destination Checking' }),
+    ],
+  );
+
+  const janAccounts = new Map(rows[0].accounts.map((item) => [item.account_balance_id, item]));
+  assert.equal(janAccounts.get(1).income, 25);
+  assert.equal(janAccounts.get(1).debt_payments, 80);
+  assert.equal(janAccounts.get(1).bills, 20);
+  assert.equal(janAccounts.get(1).transfers_out, 0);
+  assert.equal(janAccounts.get(1).cash_balance, 25);
+  assert.equal(janAccounts.get(2).transfers_in, 0);
+  assert.equal(rows[0].total_cash_balance, 25);
 });

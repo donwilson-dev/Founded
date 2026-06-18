@@ -2282,14 +2282,20 @@ function ownerProjectionRows(rows = [], selectedProjection, owner, hasScenario) 
   const baselineAssumptions = assumptions.baseline_assumptions || assumptions;
   const baselineSources = ownerSourcesForAssumptions(baselineAssumptions, ownerAccountIds);
   const scenarioSources = hasScenario ? ownerSourcesForAssumptions(assumptions, ownerAccountIds) : null;
+  const protectedAccountRows = accountProjectionSourceRows(selectedProjection, hasScenario);
   let cashBalance = startingOwnerCash(accountBalances, ownerAccountIds, rows[0]?.month);
   let scenarioCashBalance = cashBalance;
 
   return rows.map((row) => {
     const month = row.month;
     const ownerRow = ownerRowForSources(row, month, baselineSources, '');
-    cashBalance = roundMoney(cashBalance + ownerRow['Monthly Surplus']);
-    ownerRow['Cash Balance'] = cashBalance;
+    applyProtectedOwnerAccountTotals(ownerRow, protectedAccountRows, month, ownerAccountIds, '');
+    if (ownerRow['Cash Balance'] === undefined) {
+      cashBalance = roundMoney(cashBalance + ownerRow['Monthly Surplus']);
+      ownerRow['Cash Balance'] = cashBalance;
+    } else {
+      cashBalance = ownerRow['Cash Balance'];
+    }
 
     if (hasScenario && scenarioSources && rowHasScenarioValues(row)) {
       const scenarioValues = ownerRowForSources(row, month, scenarioSources, '+');
@@ -2300,6 +2306,44 @@ function ownerProjectionRows(rows = [], selectedProjection, owner, hasScenario) 
 
     return ownerRow;
   });
+}
+
+function applyProtectedOwnerAccountTotals(ownerRow, accountProjectionRows, month, ownerAccountIds, suffix) {
+  const protectedTotals = ownerAccountTotalsForMonth(accountProjectionRows, month, ownerAccountIds);
+  if (!protectedTotals) return;
+
+  const incomeKey = suffixKey('Income', suffix);
+  const transfersInKey = suffixKey('Transfers In', suffix);
+  const transfersOutKey = suffixKey('Transfers Out', suffix);
+  const monthlySurplusKey = suffixKey('Monthly Surplus', suffix);
+  const cashBalanceKey = suffixKey('Cash Balance', suffix);
+  const earnedIncome = Number(ownerRow[incomeKey] || 0) - Number(ownerRow[transfersInKey] || 0);
+
+  ownerRow[transfersInKey] = protectedTotals.transfersIn;
+  ownerRow[transfersOutKey] = protectedTotals.transfersOut;
+  ownerRow[incomeKey] = roundMoney(earnedIncome + protectedTotals.transfersIn);
+  ownerRow[monthlySurplusKey] = roundMoney(
+    ownerRow[incomeKey] -
+    Number(ownerRow[suffixKey('Total Debt Payments', suffix)] || 0) -
+    Number(ownerRow[suffixKey('Bills', suffix)] || 0) -
+    protectedTotals.transfersOut
+  );
+  ownerRow[cashBalanceKey] = protectedTotals.cashBalance;
+}
+
+function ownerAccountTotalsForMonth(accountProjectionRows = [], month, ownerAccountIds) {
+  const accountProjectionRow = (accountProjectionRows || []).find((row) => row.month === month);
+  if (!accountProjectionRow) return null;
+
+  const ownerAccounts = (accountProjectionRow.accounts || [])
+    .filter((account) => ownerAccountIds.has(String(account.account_balance_id)));
+  if (!ownerAccounts.length) return null;
+
+  return {
+    transfersIn: roundMoney(ownerAccounts.reduce((sum, account) => sum + Number(account.transfers_in || 0), 0)),
+    transfersOut: roundMoney(ownerAccounts.reduce((sum, account) => sum + Number(account.transfers_out || 0), 0)),
+    cashBalance: roundMoney(ownerAccounts.reduce((sum, account) => sum + Number(account.cash_balance || 0), 0)),
+  };
 }
 
 function ownerRowForSources(row, month, sources, suffix) {

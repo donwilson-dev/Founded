@@ -123,10 +123,10 @@ function daysBetween(start, end) {
   return Math.trunc((end.getTime() - start.getTime()) / MS_PER_DAY);
 }
 
-function occurrenceCountForMonth(frequency, startDate, endDate, month, options = {}) {
+function occurrenceDatesForMonth(frequency, startDate, endDate, month, options = {}) {
   const active = options.active ?? true;
   if (!active) {
-    return 0;
+    return [];
   }
 
   const normalized = normalizedFrequency(frequency);
@@ -138,15 +138,15 @@ function occurrenceCountForMonth(frequency, startDate, endDate, month, options =
   const rangeEnd = minDate(end || monthEnd, monthEnd);
 
   if (rangeStart > rangeEnd) {
-    return 0;
+    return [];
   }
 
   if (normalized === 'one_time') {
-    return monthStart <= start && start <= monthEnd && (!end || start <= end) ? 1 : 0;
+    return monthStart <= start && start <= monthEnd && (!end || start <= end) ? [start] : [];
   }
 
   if (normalized === 'monthly') {
-    return 1;
+    return [rangeStart];
   }
 
   if (normalized === 'weekly' || normalized === 'bi_weekly') {
@@ -156,10 +156,16 @@ function occurrenceCountForMonth(frequency, startDate, endDate, month, options =
     const firstOccurrence = new Date(start.getTime() + occurrenceOffset * MS_PER_DAY);
 
     if (firstOccurrence > rangeEnd) {
-      return 0;
+      return [];
     }
 
-    return Math.floor(daysBetween(firstOccurrence, rangeEnd) / intervalDays) + 1;
+    const occurrences = [];
+    let current = firstOccurrence;
+    while (current <= rangeEnd) {
+      occurrences.push(current);
+      current = new Date(current.getTime() + intervalDays * MS_PER_DAY);
+    }
+    return occurrences;
   }
 
   if (normalized === 'first_and_fifteenth') {
@@ -167,10 +173,14 @@ function occurrenceCountForMonth(frequency, startDate, endDate, month, options =
       monthStart,
       new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 15)),
     ];
-    return candidates.filter((candidate) => rangeStart <= candidate && candidate <= rangeEnd).length;
+    return candidates.filter((candidate) => rangeStart <= candidate && candidate <= rangeEnd);
   }
 
-  return 1;
+  return [rangeStart];
+}
+
+function occurrenceCountForMonth(frequency, startDate, endDate, month, options = {}) {
+  return occurrenceDatesForMonth(frequency, startDate, endDate, month, options).length;
 }
 
 function isActiveForMonth(item, month) {
@@ -195,6 +205,7 @@ module.exports = {
   inclusiveMonthCount,
   monthRange,
   normalizedFrequency,
+  occurrenceDatesForMonth,
   occurrenceCountForMonth,
   isActiveForMonth,
 };

@@ -4,6 +4,22 @@ const { getDatabaseStatus } = require('../config/database');
 const Income = require('../models/Income');
 const { findByIdentifier, httpError, incomePayload, nextLegacyId } = require('../services/writeValidation');
 
+function incomeResponse(income) {
+  if (!income) return income;
+  const plain = typeof income.toObject === 'function' ? income.toObject() : income;
+  return {
+    ...plain,
+    id: plain.legacyId ?? String(plain._id),
+    account_balance_id: plain.legacy_account_balance_id ?? plain.account_balance_id ?? null,
+    from_account_id: plain.legacy_from_account_id ?? plain.from_account_id ?? null,
+    to_account_id: plain.legacy_to_account_id ?? plain.to_account_id ?? null,
+  };
+}
+
+function incomeListResponse(incomeSources) {
+  return incomeSources.map((income) => incomeResponse(income));
+}
+
 async function listIncome(_req, res, next) {
   const database = getDatabaseStatus();
 
@@ -17,7 +33,7 @@ async function listIncome(_req, res, next) {
 
   try {
     const incomeSources = await Income.find().sort({ legacyId: 1 }).lean();
-    res.json(incomeSources);
+    res.json(incomeListResponse(incomeSources));
   } catch (error) {
     next(error);
   }
@@ -44,7 +60,7 @@ async function createIncome(req, res, next) {
       ...(await incomePayload(req.body)),
     });
     await incomeSource.save();
-    res.status(201).json(incomeSource.toObject());
+    res.status(201).json(incomeResponse(incomeSource));
   } catch (error) {
     next(error);
   }
@@ -84,7 +100,7 @@ async function getIncome(req, res, next) {
       return;
     }
 
-    res.json(incomeSource);
+    res.json(incomeResponse(incomeSource));
   } catch (error) {
     next(error);
   }
@@ -113,7 +129,7 @@ async function updateIncome(req, res, next) {
 
     incomeSource.set(await incomePayload(req.body, incomeSource));
     await incomeSource.save();
-    res.json(incomeSource.toObject());
+    res.json(incomeResponse(incomeSource));
   } catch (error) {
     next(error);
   }
@@ -151,6 +167,8 @@ module.exports = {
   createIncome,
   deleteIncome,
   getIncome,
+  incomeResponse,
+  incomeListResponse,
   listIncome,
   updateIncome,
 };

@@ -245,7 +245,7 @@ test('native baseline projection matches FastAPI for account transfers and owner
       ],
       account_balances: [
         account({ id: 1, name: 'Alex Checking', owner: 'Alex', amount: 1000 }),
-        account({ id: 2, name: 'Joint Checking', owner: 'Joint', amount: 500 }),
+        account({ id: 2, name: 'Joint Checking', owner: 'Joint', amount: 2000 }),
       ],
     },
   ];
