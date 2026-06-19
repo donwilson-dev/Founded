@@ -28,6 +28,13 @@ import ProjectionTable from '../components/ProjectionTable.jsx';
 import SummaryCard from '../components/SummaryCard.jsx';
 import { accountDisplayName } from '../utils/accountLabels.js';
 import { currency, currencyPrecise, labelize, percent, shortMonth } from '../utils/formatters.js';
+import {
+  getAccountRefId,
+  getDebtRefId,
+  getFromAccountRefId,
+  getRecordId,
+  getToAccountRefId,
+} from '../utils/identity.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
@@ -37,6 +44,13 @@ const MAX_ACCOUNT_BALANCES = 15;
 const MAX_INCOME_SOURCES = 15;
 const MAX_DEBTS = 25;
 const ACCOUNT_REFERENCE_MESSAGE = 'This account is currently referenced by existing records. Reassign or remove dependent records before deleting this account.';
+const recordId = getRecordId;
+const rateRecordId = getRecordId;
+const incomeRecordId = getRecordId;
+const debtAccountSelectionId = getDebtRefId;
+const incomeAccountSelectionId = getAccountRefId;
+const incomeFromAccountSelectionId = getFromAccountRefId;
+const incomeToAccountSelectionId = getToAccountRefId;
 
 const initialIncome = {
   label: '',
@@ -239,7 +253,7 @@ export default function BaselineBuilder({ isActive = false }) {
   }, [rows, projection, incomeSources, debts]);
 
   const editingDebt = debts.find((debt) => String(recordId(debt)) === String(editingDebtId));
-  const selectedSavedProjection = savedProjections.find((item) => String(item.id) === String(selectedSavedProjectionId));
+  const selectedSavedProjection = savedProjections.find((item) => String(recordId(item)) === String(selectedSavedProjectionId));
   const activeAccountBalances = useMemo(() => accountBalances.filter((item) => item.active !== false), [accountBalances]);
 
   function reorderAccountBalances(fromIndex, toIndex) {
@@ -343,7 +357,7 @@ export default function BaselineBuilder({ isActive = false }) {
           generatedRows: nextProjection.generated_rows || [],
         });
         setProjection(nextProjection);
-        setSelectedSavedProjectionId(String(saved.id));
+        setSelectedSavedProjectionId(String(recordId(saved)));
         await refreshSavedProjections();
         window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
         return { generated: nextProjection, saved };
@@ -821,7 +835,7 @@ export default function BaselineBuilder({ isActive = false }) {
         generatedRows,
       });
       setProjectionTitle(projectionTitle);
-      setSelectedSavedProjectionId(String(saved.id));
+      setSelectedSavedProjectionId(String(recordId(saved)));
       setStatus(generatedRows.length ? 'Projection saved.' : 'Baseline source state saved.');
       await refreshSavedProjections();
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
@@ -868,10 +882,10 @@ export default function BaselineBuilder({ isActive = false }) {
   async function deleteProjection(item) {
     setLoading(true);
     try {
-      await foundedApi.deleteSavedProjection(item.id);
-      setSavedProjections((items) => items.filter((saved) => saved.id !== item.id));
+      await foundedApi.deleteSavedProjection(recordId(item));
+      setSavedProjections((items) => items.filter((saved) => String(recordId(saved)) !== String(recordId(item))));
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
-      if (String(selectedSavedProjectionId) === String(item.id)) {
+      if (String(selectedSavedProjectionId) === String(recordId(item))) {
         setSelectedSavedProjectionId('');
         setProjection(null);
         setProjectionTitle('');
@@ -932,13 +946,13 @@ export default function BaselineBuilder({ isActive = false }) {
             <select value={selectedSavedProjectionId} onChange={(event) => event.target.value && openProjection(event.target.value)} disabled={busy}>
               <option value="">Select a saved baseline</option>
               {savedProjections.map((item) => (
-                <option key={item.id} value={item.id}>{item.title} - {shortMonth(item.updated_at)}</option>
+                <option key={recordId(item)} value={recordId(item)}>{item.title} - {shortMonth(item.updated_at)}</option>
               ))}
             </select>
           </label>
           <div className="header-delete-slot baseline-delete-action">
             {selectedSavedProjection ? (
-              String(pendingDeleteProjectionId) === String(selectedSavedProjection.id) ? (
+              String(pendingDeleteProjectionId) === String(recordId(selectedSavedProjection)) ? (
                 <>
                   <button type="button" className="mini-confirm-button" onClick={() => deleteProjection(selectedSavedProjection)} disabled={busy}>
                     Confirm
@@ -951,7 +965,7 @@ export default function BaselineBuilder({ isActive = false }) {
                 <button
                   type="button"
                   className="icon-button table-action danger-action"
-                  onClick={() => setPendingDeleteProjectionId(selectedSavedProjection.id)}
+                  onClick={() => setPendingDeleteProjectionId(recordId(selectedSavedProjection))}
                   disabled={busy}
                   title="Delete selected baseline"
                   aria-label="Delete selected baseline"
@@ -1497,18 +1511,6 @@ function isOneTimeOtherDebt(formOrDebt) {
   return isOtherDebt(formOrDebt) && (formOrDebt?.recurrence || 'monthly') === 'one_time';
 }
 
-function debtAccountSelectionId(debt = {}) {
-  return debt.legacy_account_balance_id ?? debt.account_balance_id ?? debt.accountBalanceId ?? '';
-}
-
-function recordId(item = {}) {
-  return item.id ?? item.legacyId ?? item._id;
-}
-
-function rateRecordId(item = {}) {
-  return item.id ?? item.legacyId ?? item._id;
-}
-
 async function fetchDebtWithRates(debtId, fallbackDebt = {}) {
   const [debt, rates] = await Promise.all([
     foundedApi.getDebt(debtId),
@@ -1518,22 +1520,6 @@ async function fetchDebtWithRates(debtId, fallbackDebt = {}) {
     ...debt,
     interest_rates: rates.length ? rates : fallbackDebt.interest_rates || [],
   };
-}
-
-function incomeRecordId(source = {}) {
-  return source.id ?? source.legacyId ?? source._id;
-}
-
-function incomeAccountSelectionId(source = {}) {
-  return source.legacy_account_balance_id ?? source.account_balance_id ?? source.accountBalanceId ?? '';
-}
-
-function incomeFromAccountSelectionId(source = {}) {
-  return source.legacy_from_account_id ?? source.from_account_id ?? source.fromAccountId ?? '';
-}
-
-function incomeToAccountSelectionId(source = {}) {
-  return source.legacy_to_account_id ?? source.to_account_id ?? source.toAccountId ?? '';
 }
 
 function normalizeDebtFormForType(form) {

@@ -32,6 +32,15 @@ import ChartCard from '../components/ChartCard.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ProjectionTable from '../components/ProjectionTable.jsx';
 import { currency, currencyPrecise, labelize, percent, shortMonth, signedCurrencyPrecise } from '../utils/formatters.js';
+import {
+  getAccountRefId,
+  getDebtRefId,
+  getFromAccountRefId,
+  getRateDebtId,
+  getRecordId,
+  getToAccountRefId,
+  sameRecordId,
+} from '../utils/identity.js';
 import { useSessionState } from '../utils/persistence.js';
 import { TABLE_COLUMN_VIEWS, columnLabel, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
@@ -117,10 +126,10 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   async function deleteProjection(item) {
     setLoading(true);
     try {
-      await foundedApi.deleteSavedProjection(item.id);
-      setSaved((items) => items.filter((savedItem) => savedItem.id !== item.id));
+      await foundedApi.deleteSavedProjection(getRecordId(item));
+      setSaved((items) => items.filter((savedItem) => String(getRecordId(savedItem)) !== String(getRecordId(item))));
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
-      if (String(projectionId) === String(item.id)) {
+      if (String(projectionId) === String(getRecordId(item))) {
         setProjectionId('');
         setDashboard(null);
         setSelectedProjection(null);
@@ -496,7 +505,7 @@ function SavedProjectionControl({
   onDelete,
   onPendingDelete,
 }) {
-  const selected = saved.find((item) => String(item.id) === String(projectionId));
+  const selected = saved.find((item) => String(getRecordId(item)) === String(projectionId));
   return (
     <div className="dashboard-header-control">
       <span
@@ -511,7 +520,7 @@ function SavedProjectionControl({
         <select value={projectionId} onChange={(event) => onLoad(event.target.value)}>
           <option value="">Select a saved projection</option>
           {saved.map((item) => (
-            <option key={item.id} value={item.id}>
+            <option key={getRecordId(item)} value={getRecordId(item)}>
               {item.title} - {labelize(item.projection_type)}
             </option>
           ))}
@@ -519,7 +528,7 @@ function SavedProjectionControl({
       </label>
       <div className="header-delete-slot">
         {selected ? (
-          String(pendingDeleteId) === String(selected.id) ? (
+          String(pendingDeleteId) === String(getRecordId(selected)) ? (
             <>
               <button type="button" className="mini-confirm-button" onClick={() => onDelete(selected)} disabled={loading}>
                 Confirm
@@ -532,7 +541,7 @@ function SavedProjectionControl({
             <button
               type="button"
               className="icon-button table-action danger-action"
-              onClick={() => onPendingDelete(selected.id)}
+              onClick={() => onPendingDelete(getRecordId(selected))}
               disabled={loading}
               title="Delete selected projection"
               aria-label={`Delete ${selected.title}`}
@@ -801,7 +810,7 @@ function ownerDebtBreakdown(selectedProjection, rows, owner, suffix) {
   const firstRow = rows.find((row) => row?.month) || {};
   return (sourceAssumptions.debts || [])
     .filter((debt) => debt.debt_type !== 'other')
-    .filter((debt) => ownerAccountIds.has(String(debt.account_balance_id)))
+    .filter((debt) => ownerAccountIds.has(String(getDebtRefId(debt))))
     .map((debt) => {
       const name = debt._projection_label || debt.name || 'Debt';
       return {
@@ -902,11 +911,11 @@ function accountOptionsFromProjection(selectedProjection, owner = 'overall', has
   const accountBalances = assumptions.account_balances || assumptions.baseline_assumptions?.account_balances || [];
   const scenarioAccountIds = hasScenario ? scenarioDeviationAccountIds(selectedProjection) : null;
   return accountBalances
-    .filter((account) => account?.id !== undefined && account?.id !== null)
+    .filter((account) => getRecordId(account) !== undefined && getRecordId(account) !== null)
     .filter((account) => owner === 'overall' || String(account.owner || '').trim() === owner)
-    .filter((account) => !scenarioAccountIds || scenarioAccountIds.has(String(account.id)))
+    .filter((account) => !scenarioAccountIds || scenarioAccountIds.has(String(getRecordId(account))))
     .map((account) => ({
-      value: String(account.id),
+      value: String(getRecordId(account)),
       label: accountDisplayLabel(account),
       owner: String(account.owner || '').trim(),
     }))
@@ -914,7 +923,7 @@ function accountOptionsFromProjection(selectedProjection, owner = 'overall', has
 }
 
 function accountDisplayLabel(account = {}) {
-  const name = String(account.name || account.bank || `Account ${account.id || ''}`).trim() || 'Account';
+  const name = String(account.name || account.bank || `Account ${getRecordId(account) || ''}`).trim() || 'Account';
   const type = String(account.account_type || '').trim();
   const owner = String(account.owner || '').trim();
   const base = type ? `${name} - ${type}` : name;
@@ -1055,9 +1064,9 @@ function incomeExportRow(item = {}, accountLookup = new Map()) {
   const transfer = isAccountTransfer(item);
   return [
     item.label || '',
-    transfer ? 'Account Transfer' : accountLookup.get(String(item.account_balance_id)) || '',
-    transfer ? accountLookup.get(String(item.from_account_id ?? item.fromAccountId ?? '')) || '' : '',
-    transfer ? accountLookup.get(String(item.to_account_id ?? item.toAccountId ?? '')) || '' : '',
+    transfer ? 'Account Transfer' : accountLookup.get(String(getAccountRefId(item))) || '',
+    transfer ? accountLookup.get(String(getFromAccountRefId(item))) || '' : '',
+    transfer ? accountLookup.get(String(getToAccountRefId(item))) || '' : '',
     item.start_date || item.startDate || '',
     item.end_date || item.endDate || '',
     item.amount ?? '',
@@ -1068,11 +1077,11 @@ function incomeExportRow(item = {}, accountLookup = new Map()) {
 
 function debtExportRow(item = {}, rates = [], accountLookup = new Map()) {
   const actualPayment = Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0);
-  const regularRate = rates.find((rate) => String(rate.debt_id) === String(item.id) && !rate.end_date) ||
-    rates.find((rate) => String(rate.debt_id) === String(item.id));
+  const regularRate = rates.find((rate) => sameRecordId(getRateDebtId(rate), getRecordId(item)) && !rate.end_date) ||
+    rates.find((rate) => sameRecordId(getRateDebtId(rate), getRecordId(item)));
   return [
     item.name || '',
-    accountLookup.get(String(item.account_balance_id)) || '',
+    accountLookup.get(String(getDebtRefId(item))) || '',
     labelize(item.debt_type || ''),
     item.current_balance ?? '',
     item.minimum_monthly_payment ?? '',
@@ -1268,7 +1277,7 @@ function debtDisplayIdentity(debt = {}, index) {
 }
 
 function debtDisplayIdentitySuffix(debt = {}, index) {
-  return debt.id ?? debt.legacyId ?? debt._id ?? index + 1;
+  return getRecordId(debt) ?? index + 1;
 }
 
 function scenarioOverridesForExport(assumptions = {}) {
@@ -1289,7 +1298,7 @@ function scenarioOverridesForExport(assumptions = {}) {
 }
 
 function accountLookupById(accounts = []) {
-  return new Map(sortByDisplayOrder(accounts).map((account) => [String(account.id), accountDisplayLabel(account)]));
+  return new Map(sortByDisplayOrder(accounts).map((account) => [String(getRecordId(account)), accountDisplayLabel(account)]));
 }
 
 function sortByDisplayOrder(items = []) {
@@ -1870,13 +1879,13 @@ function accountProjectionRowsForSelection(selectedProjection, accountId, hasSce
     return scenarioAccountProjectionRowsForSelection(selectedProjection, accountId, projectionRows);
   }
   const debts = projectionDebtsForScope(selectedProjection, hasScenario)
-    .filter((debt) => String(debt.account_balance_id ?? '') === String(accountId));
+    .filter((debt) => String(getDebtRefId(debt)) === String(accountId));
   const projectionByMonth = new Map((projectionRows || []).map((row) => [row.month, row]));
   const valueSuffix = hasScenario ? '+' : '';
   const rows = accountProjectionSourceRows(selectedProjection, hasScenario);
   return rows
     .map((row) => {
-      const account = (row.accounts || []).find((item) => String(item.account_balance_id) === String(accountId));
+      const account = (row.accounts || []).find((item) => String(getAccountRefId(item)) === String(accountId));
       if (!account) return null;
       const projectionRow = projectionByMonth.get(row.month) || {};
       const transferIn = Number(account.transfers_in || 0);
@@ -1960,7 +1969,7 @@ function scenarioAccountProjectionRowsForSelection(selectedProjection, accountId
 }
 
 function accountRowForMonth(row = {}, accountId) {
-  return (row.accounts || []).find((item) => String(item.account_balance_id) === String(accountId)) || null;
+  return (row.accounts || []).find((item) => String(getAccountRefId(item)) === String(accountId)) || null;
 }
 
 function accountValues(account = {}) {
@@ -1986,7 +1995,7 @@ function projectionDebtsForAccount(selectedProjection, accountId, includeScenari
   const baselineDebts = assumptions.baseline_assumptions?.debts || assumptions.debts || [];
   const scenarioDebts = includeScenario ? assumptions.debts || [] : [];
   const debts = [...baselineDebts, ...scenarioDebts]
-    .filter((debt) => String(debt.account_balance_id ?? '') === String(accountId));
+    .filter((debt) => String(getDebtRefId(debt)) === String(accountId));
   return uniqueBy(debts, (debt) => `${debt._projection_label || debt.name || 'Debt'}:${debt.debt_type || ''}`);
 }
 
@@ -2111,7 +2120,7 @@ function ownerDebtTypeColumns(selectedProjection, owner) {
   ];
   return [...new Set(
     debts
-      .filter((debt) => ownerAccountIds.has(String(debt.account_balance_id)))
+      .filter((debt) => ownerAccountIds.has(String(getDebtRefId(debt))))
       .map((debt) => debtTypePaymentColumn(debt.debt_type))
       .filter(Boolean)
   )];
@@ -2164,7 +2173,7 @@ function scenarioDeviationAccountIds(selectedProjection) {
   const ids = new Set();
   const explicit = assumptions.scenario_overrides || {};
   (explicit.income_overrides || []).forEach((item) => addIncomeAccountIds(ids, item));
-  (explicit.debt_overrides || []).forEach((item) => addAccountId(ids, item.account_balance_id));
+  (explicit.debt_overrides || []).forEach((item) => addAccountId(ids, getDebtRefId(item)));
   if (ids.size) return ids;
 
   const baseline = assumptions.baseline_assumptions || {};
@@ -2177,17 +2186,17 @@ function scenarioDeviationAccountIds(selectedProjection) {
     .forEach((item) => addIncomeAccountIds(ids, item));
   scenarioDebts
     .filter((item) => sourceDiffersFromBaseline(item, baselineDebts, 'name', comparableDebtSource))
-    .forEach((item) => addAccountId(ids, item.account_balance_id));
+    .forEach((item) => addAccountId(ids, getDebtRefId(item)));
   return ids;
 }
 
 function addIncomeAccountIds(ids, item = {}) {
   if (isAccountTransfer(item)) {
-    addAccountId(ids, item.from_account_id ?? item.fromAccountId);
-    addAccountId(ids, item.to_account_id ?? item.toAccountId);
+    addAccountId(ids, getFromAccountRefId(item));
+    addAccountId(ids, getToAccountRefId(item));
     return;
   }
-  addAccountId(ids, item.account_balance_id ?? item.accountBalanceId);
+  addAccountId(ids, getAccountRefId(item));
 }
 
 function addAccountId(ids, value) {
@@ -2202,18 +2211,18 @@ function sourceDiffersFromBaseline(item, baselineItems = [], naturalKey, compara
 }
 
 function identityMatches(left, right, naturalKey) {
-  if (left?.id !== undefined && right?.id !== undefined && left.id !== null && right.id !== null) {
-    return String(left.id) === String(right.id);
+  if (sameRecordId(left, right)) {
+    return true;
   }
   return left?.[naturalKey] && left[naturalKey] === right?.[naturalKey];
 }
 
 function comparableIncomeSource(item = {}) {
   return JSON.stringify({
-    account_balance_id: item.account_balance_id || null,
+    account_balance_id: getAccountRefId(item) || null,
     is_account_transfer: Boolean(item.is_account_transfer ?? item.isAccountTransfer),
-    from_account_id: item.from_account_id || item.fromAccountId || null,
-    to_account_id: item.to_account_id || item.toAccountId || null,
+    from_account_id: getFromAccountRefId(item) || null,
+    to_account_id: getToAccountRefId(item) || null,
     label: item.label || '',
     amount: Number(item.amount || 0),
     start_date: item.start_date || item.startDate || '',
@@ -2225,7 +2234,7 @@ function comparableIncomeSource(item = {}) {
 
 function comparableDebtSource(item = {}) {
   return JSON.stringify({
-    account_balance_id: item.account_balance_id || item.accountBalanceId || null,
+    account_balance_id: getDebtRefId(item) || null,
     name: item.name || '',
     debt_type: item.debt_type || item.debtType || '',
     current_balance: Number(item.current_balance ?? item.currentBalance ?? 0),
@@ -2336,7 +2345,7 @@ function ownerAccountTotalsForMonth(accountProjectionRows = [], month, ownerAcco
   if (!accountProjectionRow) return null;
 
   const ownerAccounts = (accountProjectionRow.accounts || [])
-    .filter((account) => ownerAccountIds.has(String(account.account_balance_id)));
+    .filter((account) => ownerAccountIds.has(String(getAccountRefId(account))));
   if (!ownerAccounts.length) return null;
 
   return {
@@ -2415,7 +2424,7 @@ function ownerAccountIdSet(accountBalances = [], owner) {
   return new Set(
     accountBalances
       .filter((account) => String(account.owner || '').trim() === owner)
-      .map((account) => String(account.id))
+      .map((account) => String(getRecordId(account)))
       .filter(Boolean)
   );
 }
@@ -2424,9 +2433,9 @@ function ownerSourcesForAssumptions(assumptions = {}, ownerAccountIds) {
   const incomeSources = assumptions.income_sources || [];
   return {
     ownerAccountIds,
-    incomeSources: incomeSources.filter((source) => !isAccountTransfer(source) && ownerAccountIds.has(String(source.account_balance_id))),
+    incomeSources: incomeSources.filter((source) => !isAccountTransfer(source) && ownerAccountIds.has(String(getAccountRefId(source)))),
     transfers: incomeSources.filter((source) => isAccountTransfer(source) && transferTouchesOwner(source, ownerAccountIds)),
-    debts: (assumptions.debts || []).filter((debt) => ownerAccountIds.has(String(debt.account_balance_id))),
+    debts: (assumptions.debts || []).filter((debt) => ownerAccountIds.has(String(getDebtRefId(debt)))),
   };
 }
 
@@ -2436,7 +2445,7 @@ function startingOwnerCash(accountBalances = [], ownerAccountIds, startMonth) {
   return roundMoney(
     accountBalances
       .filter((account) => account.active !== false)
-      .filter((account) => ownerAccountIds.has(String(account.id)))
+      .filter((account) => ownerAccountIds.has(String(getRecordId(account))))
       .filter((account) => firstOfMonthDate(account.date) <= start)
       .reduce((sum, account) => sum + Number(account.amount || 0), 0)
   );
@@ -2462,8 +2471,8 @@ function ownerTransferAmounts(transfer, month, ownerAccountIds) {
   );
   if (!occurrences) return { in: 0, out: 0 };
   const amount = Number(transfer.amount || 0) * occurrences;
-  const fromOwner = ownerAccountIds.has(String(transfer.from_account_id ?? transfer.fromAccountId ?? ''));
-  const toOwner = ownerAccountIds.has(String(transfer.to_account_id ?? transfer.toAccountId ?? ''));
+  const fromOwner = ownerAccountIds.has(String(getFromAccountRefId(transfer)));
+  const toOwner = ownerAccountIds.has(String(getToAccountRefId(transfer)));
   if (fromOwner && toOwner) return { in: 0, out: 0 };
   if (toOwner) return { in: amount, out: 0 };
   if (fromOwner) return { in: 0, out: amount };
@@ -2475,8 +2484,8 @@ function isAccountTransfer(source = {}) {
 }
 
 function transferTouchesOwner(source, ownerAccountIds) {
-  return ownerAccountIds.has(String(source.from_account_id ?? source.fromAccountId ?? '')) ||
-    ownerAccountIds.has(String(source.to_account_id ?? source.toAccountId ?? ''));
+  return ownerAccountIds.has(String(getFromAccountRefId(source))) ||
+    ownerAccountIds.has(String(getToAccountRefId(source)));
 }
 
 function occurrenceCountForMonth(frequency, startValue, endValue, monthValue, active = true) {
@@ -2597,7 +2606,7 @@ function projectionSnapshot(selectedProjection, summary) {
       currencyPrecise(item.amount),
     ]),
     debtRows: debts.map((debt) => {
-      const rate = rates.find((item) => Number(item.debt_id) === Number(debt.id));
+      const rate = rates.find((item) => sameRecordId(getRateDebtId(item), getRecordId(debt)));
       const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
       return [
         debt.name || '-',
@@ -2727,13 +2736,12 @@ function accountIdsMatch(record = {}, accountIds = new Set()) {
 
 function accountIdsForRecord(record = {}) {
   return new Set([
+    getRecordId(record),
     record.id,
     record.legacyId,
     record.legacy_id,
     record._id,
-    record.legacy_account_balance_id,
-    record.account_balance_id,
-    record.accountBalanceId,
+    getAccountRefId(record),
   ]
     .filter((value) => value !== undefined && value !== null && value !== '')
     .map((value) => String(value)));

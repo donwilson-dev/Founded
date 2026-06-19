@@ -14,6 +14,15 @@ import InlineAmountInput, { parseInlineAmount } from '../components/InlineAmount
 import ProjectionTable from '../components/ProjectionTable.jsx';
 import { accountDisplayName } from '../utils/accountLabels.js';
 import { currencyPrecise, labelize, percent, shortMonth } from '../utils/formatters.js';
+import {
+  getAccountRefId,
+  getDebtRefId,
+  getFromAccountRefId,
+  getRateDebtId,
+  getRecordId,
+  getToAccountRefId,
+  sameRecordId,
+} from '../utils/identity.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
@@ -21,6 +30,13 @@ import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpe
 
 const MAX_INCOME_DEVIATIONS = 10;
 const MAX_DEBT_DEVIATIONS = 10;
+const sameId = sameRecordId;
+const recordId = getRecordId;
+const rateDebtId = getRateDebtId;
+const incomeAccountSelectionId = getAccountRefId;
+const incomeFromAccountSelectionId = getFromAccountRefId;
+const incomeToAccountSelectionId = getToAccountRefId;
+const debtAccountSelectionId = getDebtRefId;
 
 const incomeTemplate = {
   label: '',
@@ -83,8 +99,8 @@ export default function ScenarioBuilder({ isActive = false }) {
   const { isRegenerating, runAutoRegeneration } = useProjectionAutoRegeneration({ setStatus });
   const busy = loading || isRegenerating;
   const normalizedScenarioRows = useMemo(() => normalizeProjectionRows(scenario?.generated_rows || []), [scenario]);
-  const selectedSavedScenario = savedScenarios.find((item) => String(item.id) === String(selectedScenarioId));
-  const selectedBaseline = saved.find((item) => String(item.id) === String(baselineId));
+  const selectedSavedScenario = savedScenarios.find((item) => String(recordId(item)) === String(selectedScenarioId));
+  const selectedBaseline = saved.find((item) => String(recordId(item)) === String(baselineId));
   const baselineReady = Boolean(baseline && selectedBaseline);
   const baselineAccounts = useMemo(
     () => baseline?.assumptions_snapshot?.account_balances || baseline?.assumptions_snapshot?.baseline_assumptions?.account_balances || [],
@@ -152,11 +168,11 @@ export default function ScenarioBuilder({ isActive = false }) {
       assumptionsSnapshot: generated.assumptions_snapshot,
       generatedRows: generated.generated_rows || [],
     });
-    setSelectedScenarioId(String(savedScenario.id));
+    setSelectedScenarioId(String(recordId(savedScenario)));
     setPendingDeleteScenarioId(null);
     setSavedScenarios((items) => [
       savedScenario,
-      ...items.filter((item) => String(item.id) !== String(savedScenario.id)),
+      ...items.filter((item) => String(recordId(item)) !== String(recordId(savedScenario))),
     ]);
     window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
     return savedScenario;
@@ -568,10 +584,10 @@ export default function ScenarioBuilder({ isActive = false }) {
     if (!item) return;
     setLoading(true);
     try {
-      await foundedApi.deleteSavedProjection(item.id);
-      setSavedScenarios((items) => items.filter((scenarioItem) => scenarioItem.id !== item.id));
+      await foundedApi.deleteSavedProjection(recordId(item));
+      setSavedScenarios((items) => items.filter((scenarioItem) => String(recordId(scenarioItem)) !== String(recordId(item))));
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
-      if (String(selectedScenarioId) === String(item.id)) {
+      if (String(selectedScenarioId) === String(recordId(item))) {
         setSelectedScenarioId('');
         setScenario(null);
       }
@@ -633,7 +649,7 @@ export default function ScenarioBuilder({ isActive = false }) {
               <select value={baselineId} onChange={(event) => loadBaseline(event.target.value)} disabled={busy}>
                 <option value="">Select a saved baseline</option>
                 {saved.map((item) => (
-                  <option key={item.id} value={item.id}>
+                  <option key={recordId(item)} value={recordId(item)}>
                     {item.title}
                   </option>
                 ))}
@@ -652,7 +668,7 @@ export default function ScenarioBuilder({ isActive = false }) {
               <select value={selectedScenarioId} onChange={(event) => loadSavedScenario(event.target.value)} disabled={busy}>
                 <option value="">Select a saved scenario</option>
                 {savedScenarios.map((item) => (
-                  <option key={item.id} value={item.id}>
+                  <option key={recordId(item)} value={recordId(item)}>
                     {item.title}
                   </option>
                 ))}
@@ -665,7 +681,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                     <button
                       type="button"
                       className="mini-confirm-button"
-                      onClick={() => deleteScenario(savedScenarios.find((item) => String(item.id) === String(selectedScenarioId)))}
+                      onClick={() => deleteScenario(savedScenarios.find((item) => String(recordId(item)) === String(selectedScenarioId)))}
                       disabled={busy}
                     >
                       Confirm
@@ -1259,18 +1275,6 @@ function debtIdentityMatches(left, right) {
   return false;
 }
 
-function sameId(left, right) {
-  return String(left) === String(right);
-}
-
-function recordId(item = {}) {
-  return item.id ?? item.legacyId ?? item._id;
-}
-
-function rateDebtId(rate = {}) {
-  return rate.legacy_debt_id ?? rate.debt_id ?? rate.debtId ?? '';
-}
-
 function comparableIncome(item = {}) {
   return JSON.stringify({
     account_balance_id: incomeAccountSelectionId(item) || null,
@@ -1303,22 +1307,6 @@ function comparableDebt(item = {}) {
     active: item.active !== false,
     notes: item.notes || null,
   });
-}
-
-function incomeAccountSelectionId(source = {}) {
-  return source.legacy_account_balance_id ?? source.account_balance_id ?? source.accountBalanceId ?? '';
-}
-
-function incomeFromAccountSelectionId(source = {}) {
-  return source.legacy_from_account_id ?? source.from_account_id ?? source.fromAccountId ?? '';
-}
-
-function incomeToAccountSelectionId(source = {}) {
-  return source.legacy_to_account_id ?? source.to_account_id ?? source.toAccountId ?? '';
-}
-
-function debtAccountSelectionId(debt = {}) {
-  return debt.legacy_account_balance_id ?? debt.account_balance_id ?? debt.accountBalanceId ?? '';
 }
 
 function comparableRates(rates = []) {
