@@ -66,9 +66,19 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     try {
       const items = await foundedApi.listSavedProjections();
       setSaved(items);
+      if (projectionId && !items.some((item) => String(getRecordId(item)) === String(projectionId))) {
+        clearSelectedProjectionState();
+      }
     } catch (error) {
       setStatus(error.message);
     }
+  }
+
+  function clearSelectedProjectionState() {
+    setProjectionId('');
+    setDashboard(null);
+    setSelectedProjection(null);
+    setPendingDeleteId(null);
   }
 
   useEffect(() => {
@@ -130,9 +140,7 @@ export default function Dashboard({ onNavigate, isActive = false }) {
       setSaved((items) => items.filter((savedItem) => String(getRecordId(savedItem)) !== String(getRecordId(item))));
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
       if (String(projectionId) === String(getRecordId(item))) {
-        setProjectionId('');
-        setDashboard(null);
-        setSelectedProjection(null);
+        clearSelectedProjectionState();
       }
       setPendingDeleteId(null);
       setStatus('Saved projection deleted.');

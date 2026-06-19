@@ -177,12 +177,51 @@ export default function BaselineBuilder({ isActive = false }) {
 
   async function refreshSavedProjections() {
     const saved = await foundedApi.listSavedProjections();
-    setSavedProjections(saved.filter((item) => item.projection_type === 'baseline'));
+    const baselines = saved.filter((item) => item.projection_type === 'baseline');
+    setSavedProjections(baselines);
+    if (selectedSavedProjectionId && !baselines.some((item) => String(recordId(item)) === String(selectedSavedProjectionId))) {
+      clearSelectedBaselineState();
+    }
+  }
+
+  function resetBaselineEditState() {
+    setPendingDeleteRow(null);
+    setPendingDeleteRateId(null);
+    setEditingAccountBalanceId(null);
+    setEditingIncomeId(null);
+    setEditingDebtId(null);
+    setAccountBalanceForm(initialAccountBalance);
+    setIncomeForm(initialIncome);
+    setDebtForm(initialDebt);
+    setDebtDateError('');
+    setShowAccountBalanceForm(false);
+    setShowIncomeForm(false);
+    setShowDebtForm(false);
+  }
+
+  function clearSelectedBaselineState() {
+    setSelectedSavedProjectionId('');
+    setPendingDeleteProjectionId(null);
+    setAccountBalances([]);
+    setIncomeSources([]);
+    setDebts([]);
+    setProjection(null);
+    setProjectionTitle('');
+    setProjectionNotes('');
+    resetBaselineEditState();
   }
 
   useEffect(() => {
     refresh({ includeInputs: false }).catch((error) => setStatus(error.message));
   }, []);
+
+  useEffect(() => {
+    function handleSavedProjectionChange() {
+      refreshSavedProjections().catch((error) => setStatus(error.message));
+    }
+    window.addEventListener('founded:saved-projections-changed', handleSavedProjectionChange);
+    return () => window.removeEventListener('founded:saved-projections-changed', handleSavedProjectionChange);
+  }, [selectedSavedProjectionId]);
 
   useEffect(() => {
     if (!status) return undefined;
@@ -818,27 +857,9 @@ export default function BaselineBuilder({ isActive = false }) {
       setStatus('Baseline Title is required.');
       return;
     }
-    const assumptionsSnapshot = buildSourceSnapshot(
-      accountBalances,
-      incomeSources,
-      debts,
-      projection?.assumptions_snapshot
-    );
-    const generatedRows = projection?.generated_rows || [];
     setLoading(true);
     try {
-      const saved = await foundedApi.saveProjection({
-        title: projectionTitle,
-        projectionType: 'baseline',
-        notes: projectionNotes,
-        assumptionsSnapshot,
-        generatedRows,
-      });
-      setProjectionTitle(projectionTitle);
-      setSelectedSavedProjectionId(String(recordId(saved)));
-      setStatus(generatedRows.length ? 'Projection saved.' : 'Baseline source state saved.');
-      await refreshSavedProjections();
-      window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
+      await autoSaveBaselineProjection({ successMessage: 'Baseline generated and saved.' });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -849,6 +870,7 @@ export default function BaselineBuilder({ isActive = false }) {
   async function openProjection(id) {
     setSelectedSavedProjectionId(id);
     setPendingDeleteProjectionId(null);
+    resetBaselineEditState();
     setLoading(true);
     try {
       const opened = await foundedApi.getSavedProjection(id);
@@ -886,10 +908,7 @@ export default function BaselineBuilder({ isActive = false }) {
       setSavedProjections((items) => items.filter((saved) => String(recordId(saved)) !== String(recordId(item))));
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
       if (String(selectedSavedProjectionId) === String(recordId(item))) {
-        setSelectedSavedProjectionId('');
-        setProjection(null);
-        setProjectionTitle('');
-        setProjectionNotes('');
+        clearSelectedBaselineState();
       }
       setPendingDeleteProjectionId(null);
       setStatus('Saved projection deleted.');

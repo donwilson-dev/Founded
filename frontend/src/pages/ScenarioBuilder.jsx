@@ -108,6 +108,48 @@ export default function ScenarioBuilder({ isActive = false }) {
   );
   const activeBaselineAccounts = useMemo(() => baselineAccounts.filter((item) => item.active !== false), [baselineAccounts]);
 
+  function resetScenarioEditState() {
+    setPendingDeleteRow(null);
+    setEditingIncomeOverrideIndex(null);
+    setEditingDebtOverrideIndex(null);
+    setIncomeForm(incomeTemplate);
+    setDebtForm(debtTemplate);
+    setDebtAprError('');
+    setDebtDateError('');
+    setShowIncomeForm(false);
+    setShowDebtForm(false);
+  }
+
+  function clearSelectedScenarioState({ clearOverrides = false } = {}) {
+    setSelectedScenarioId('');
+    setPendingDeleteScenarioId(null);
+    setScenario(null);
+    if (clearOverrides) {
+      setIncomeOverrides([]);
+      setDebtOverrides([]);
+    }
+    resetScenarioEditState();
+  }
+
+  function clearLoadedBaselineState() {
+    setBaselineId('');
+    setBaseline(null);
+    clearSelectedScenarioState({ clearOverrides: true });
+  }
+
+  function applySavedProjectionLists(items) {
+    const baselines = items.filter((item) => item.projection_type === 'baseline');
+    const scenarios = items.filter((item) => item.projection_type === 'scenario');
+    setSaved(baselines);
+    setSavedScenarios(scenarios);
+    if (baselineId && !baselines.some((item) => String(recordId(item)) === String(baselineId))) {
+      clearLoadedBaselineState();
+    }
+    if (selectedScenarioId && !scenarios.some((item) => String(recordId(item)) === String(selectedScenarioId))) {
+      clearSelectedScenarioState({ clearOverrides: true });
+    }
+  }
+
   function reorderIncomeOverrides(fromIndex, toIndex) {
     setIncomeOverrides((items) => reorderItems(items, fromIndex, toIndex));
   }
@@ -227,10 +269,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   useEffect(() => {
     foundedApi
       .listSavedProjections()
-      .then((items) => {
-        setSaved(items.filter((item) => item.projection_type === 'baseline'));
-      setSavedScenarios(items.filter((item) => item.projection_type === 'scenario'));
-      })
+      .then((items) => applySavedProjectionLists(items))
       .catch((error) => setStatus(error.message));
   }, []);
 
@@ -238,15 +277,12 @@ export default function ScenarioBuilder({ isActive = false }) {
     function refreshSavedBaselines() {
       foundedApi
         .listSavedProjections()
-        .then((items) => {
-          setSaved(items.filter((item) => item.projection_type === 'baseline'));
-          setSavedScenarios(items.filter((item) => item.projection_type === 'scenario'));
-        })
+        .then((items) => applySavedProjectionLists(items))
         .catch((error) => setStatus(error.message));
     }
     window.addEventListener('founded:saved-projections-changed', refreshSavedBaselines);
     return () => window.removeEventListener('founded:saved-projections-changed', refreshSavedBaselines);
-  }, []);
+  }, [baselineId, selectedScenarioId]);
 
   useEffect(() => {
     if (!status) return undefined;
@@ -268,8 +304,14 @@ export default function ScenarioBuilder({ isActive = false }) {
   }, []);
 
   async function loadBaseline(id) {
+    const isSwitchingBaseline = String(id || '') !== String(baselineId || '');
     setBaselineId(id);
     resetGeneratedScenarioState();
+    if (isSwitchingBaseline) {
+      setIncomeOverrides([]);
+      setDebtOverrides([]);
+      resetScenarioEditState();
+    }
     if (!id) {
       setBaseline(null);
       return;
@@ -287,20 +329,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   }
 
   function clearBaseline() {
-    setBaselineId('');
-    setBaseline(null);
-    resetGeneratedScenarioState();
-    setIncomeOverrides([]);
-    setDebtOverrides([]);
-    setIncomeForm(incomeTemplate);
-    setDebtForm(debtTemplate);
-    setEditingIncomeOverrideIndex(null);
-    setEditingDebtOverrideIndex(null);
-    setShowIncomeForm(false);
-    setShowDebtForm(false);
-    setDebtAprError('');
-    setDebtDateError('');
-    setPendingDeleteRow(null);
+    clearLoadedBaselineState();
     setStatus('Baseline selection cleared.');
   }
 
@@ -360,8 +389,8 @@ export default function ScenarioBuilder({ isActive = false }) {
       return;
     }
     if (!isOtherDebt(debtForm) && !isValidApr(debtForm.aprPercentage)) {
-      setDebtAprError('APR is required for this debt type.');
-      setStatus('APR is required for this debt type.');
+      setDebtAprError('APR must be 0% or greater.');
+      setStatus('APR must be 0% or greater.');
       return;
     }
     setDebtAprError('');
@@ -571,8 +600,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   async function saveScenario() {
     setLoading(true);
     try {
-      await saveGeneratedScenario(scenario);
-      setStatus('Scenario saved.');
+      await autoSaveScenarioProjection({ successMessage: 'Scenario generated and saved.' });
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -588,8 +616,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       setSavedScenarios((items) => items.filter((scenarioItem) => String(recordId(scenarioItem)) !== String(recordId(item))));
       window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
       if (String(selectedScenarioId) === String(recordId(item))) {
-        setSelectedScenarioId('');
-        setScenario(null);
+        clearSelectedScenarioState({ clearOverrides: true });
       }
       setPendingDeleteScenarioId(null);
       setStatus('Saved scenario deleted.');
@@ -604,7 +631,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     setSelectedScenarioId(id);
     setPendingDeleteScenarioId(null);
     if (!id) {
-      setScenario(null);
+      clearSelectedScenarioState({ clearOverrides: true });
       return;
     }
     setLoading(true);
@@ -622,6 +649,8 @@ export default function ScenarioBuilder({ isActive = false }) {
       setIncomeForm(incomeTemplate);
       setDebtForm(debtTemplate);
       setDebtAprError('');
+      setDebtDateError('');
+      setPendingDeleteRow(null);
       if (assumptions.baseline_projection_id) {
         const baselineProjection = await foundedApi.getSavedProjection(assumptions.baseline_projection_id);
         setBaselineId(String(assumptions.baseline_projection_id));
@@ -705,7 +734,7 @@ export default function ScenarioBuilder({ isActive = false }) {
               ) : null}
             </div>
           </div>
-          <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={!scenario || busy || !baselineReady}>
+          <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={busy || !baselineReady}>
             <Save size={16} /> Save
           </button>
           <button className="primary-button" disabled={!baselineReady || busy} onClick={generateScenario}>
@@ -912,7 +941,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                     setDebtForm({ ...debtForm, aprPercentage: e.target.value });
                     if (isValidApr(e.target.value)) setDebtAprError('');
                   }} /></label>
-                  {debtAprError ? <p className="field-error">APR is required for this debt type.</p> : null}
+                  {debtAprError ? <p className="field-error">{debtAprError}</p> : null}
                   <label>Promo APR %<input type="number" min="0" step="0.01" placeholder="Optional" value={debtForm.promoAprPercentage} onChange={(e) => setDebtForm({ ...debtForm, promoAprPercentage: e.target.value })} /></label>
                   <label>Promo Start Date<input type="date" value={debtForm.promoStartDate} onChange={(e) => setDebtForm({ ...debtForm, promoStartDate: e.target.value })} /></label>
                   <label>Promo End Date<input type="date" value={debtForm.promoEndDate} onChange={(e) => setDebtForm({ ...debtForm, promoEndDate: e.target.value })} /></label>
@@ -1179,7 +1208,7 @@ function isOtherDebt(formOrDebt) {
 }
 
 function isValidApr(value) {
-  if (value === '' || value === null || value === undefined) return false;
+  if (value === '' || value === null || value === undefined) return true;
   const number = Number(value);
   return Number.isFinite(number) && number >= 0;
 }

@@ -24,6 +24,27 @@ function projectionResponse(projection) {
   };
 }
 
+function baselineReferenceValues(projection) {
+  return [
+    projection.legacyId,
+    projection.legacyId === undefined || projection.legacyId === null ? null : String(projection.legacyId),
+    projection._id,
+    projection._id === undefined || projection._id === null ? null : String(projection._id),
+    projection.id,
+    projection.id === undefined || projection.id === null ? null : String(projection.id),
+  ].filter((value, index, values) => value !== null && value !== undefined && values.indexOf(value) === index);
+}
+
+async function deleteDependentScenarios(projection) {
+  if (projection.projection_type !== 'baseline') return;
+  const baselineReferences = baselineReferenceValues(projection);
+  if (!baselineReferences.length) return;
+  await SavedProjection.deleteMany({
+    projection_type: 'scenario',
+    'assumptions_snapshot.baseline_projection_id': { $in: baselineReferences },
+  });
+}
+
 async function generateBaselineProjection(req, res, next) {
   try {
     res.json(await generateNativeBaseline(req.body));
@@ -164,6 +185,7 @@ async function deleteProjection(req, res, next) {
       return;
     }
 
+    await deleteDependentScenarios(projection);
     await projection.deleteOne();
     res.status(204).send();
   } catch (error) {
@@ -173,9 +195,11 @@ async function deleteProjection(req, res, next) {
 
 module.exports = {
   deleteProjection,
+  deleteDependentScenarios,
   generateAndSaveBaselineProjection,
   generateBaselineProjection,
   getProjection,
   listProjections,
   saveProjection,
+  baselineReferenceValues,
 };
