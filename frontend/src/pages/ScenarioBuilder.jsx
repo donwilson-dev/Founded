@@ -26,7 +26,7 @@ import {
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
-import { TABLE_COLUMN_VIEWS, normalizeProjectionRows } from '../utils/tableHelpers.js';
+import { hiddenEqualPlusColumns, normalizeProjectionRows, scenarioComparisonColumns } from '../utils/tableHelpers.js';
 
 const MAX_INCOME_DEVIATIONS = 10;
 const MAX_DEBT_DEVIATIONS = 10;
@@ -99,6 +99,8 @@ export default function ScenarioBuilder({ isActive = false }) {
   const { isRegenerating, runAutoRegeneration } = useProjectionAutoRegeneration({ setStatus });
   const busy = loading || isRegenerating;
   const normalizedScenarioRows = useMemo(() => normalizeProjectionRows(scenario?.generated_rows || []), [scenario]);
+  const scenarioTableColumns = useMemo(() => scenarioComparisonColumns(normalizedScenarioRows), [normalizedScenarioRows]);
+  const hiddenScenarioColumns = useMemo(() => hiddenEqualPlusColumns(normalizedScenarioRows), [normalizedScenarioRows]);
   const selectedSavedScenario = savedScenarios.find((item) => String(recordId(item)) === String(selectedScenarioId));
   const selectedBaseline = saved.find((item) => String(recordId(item)) === String(baselineId));
   const baselineReady = Boolean(baseline && selectedBaseline);
@@ -180,6 +182,19 @@ export default function ScenarioBuilder({ isActive = false }) {
     return baselineAccounts.some((account) => String(recordId(account)) === String(accountId));
   }
 
+  function accountNameForId(accountId) {
+    if (!accountId) return 'Unassigned';
+    const account = baselineAccounts.find((item) => String(recordId(item)) === String(accountId));
+    return account ? accountDisplayName(account) : 'Unassigned';
+  }
+
+  function incomeOverrideAccountLabel(item = {}) {
+    if (item.is_account_transfer) {
+      return `${accountNameForId(incomeFromAccountSelectionId(item))} -> ${accountNameForId(incomeToAccountSelectionId(item))}`;
+    }
+    return accountNameForId(incomeAccountSelectionId(item));
+  }
+
   function validateAccountSelection(accountId, label = 'Account') {
     if (!accountId) return `${label} is required.`;
     if (!accountExists(accountId)) return `${label} is no longer available.`;
@@ -232,9 +247,16 @@ export default function ScenarioBuilder({ isActive = false }) {
         notify('Generating scenario projection...');
         const generated = await foundedApi.generateScenario(scenarioGenerationPayload(nextIncomeOverrides, nextDebtOverrides));
         notify('Saving regenerated scenario...');
-        await saveGeneratedScenario(generated);
-        setScenario(generated);
-        return generated;
+        const savedScenario = await saveGeneratedScenario(generated);
+        const currentScenario = {
+          ...generated,
+          ...savedScenario,
+          summary: generated.summary,
+          generated_rows: savedScenario.generated_rows || generated.generated_rows || [],
+          assumptions_snapshot: savedScenario.assumptions_snapshot || generated.assumptions_snapshot,
+        };
+        setScenario(currentScenario);
+        return currentScenario;
       },
     });
   }, [
@@ -540,6 +562,46 @@ export default function ScenarioBuilder({ isActive = false }) {
     }
   }
 
+  async function toggleIncomeOverrideActive(index, active) {
+    if ((incomeOverrides[index]?.active !== false) === active) return;
+    const nextIncomeOverrides = incomeOverrides.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, active } : item
+    ));
+    setLoading(true);
+    try {
+      setIncomeOverrides(nextIncomeOverrides);
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        incomeOverrides: nextIncomeOverrides,
+        successMessage: 'Income deviation active state updated. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleDebtOverrideActive(index, active) {
+    if ((debtOverrides[index]?.debt?.active !== false) === active) return;
+    const nextDebtOverrides = debtOverrides.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, debt: { ...item.debt, active } } : item
+    ));
+    setLoading(true);
+    try {
+      setDebtOverrides(nextDebtOverrides);
+      setScenario(null);
+      await autoSaveScenarioProjection({
+        debtOverrides: nextDebtOverrides,
+        successMessage: 'Debt deviation active state updated. Scenario regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function startEditIncomeOverride(item, index) {
     setEditingIncomeOverrideIndex(index);
     setIncomeForm({
@@ -756,7 +818,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           </button>
         </div>
         <DeviationTable
-          columns={['Name', 'Amount', 'Frequency', 'Start Date', 'End Date', 'Update', 'Status', 'Actions']}
+          columns={['Name', 'Account', 'Start Date', 'Changed Amount', 'Frequency', 'Update', 'Actions']}
           sectionId="income-deviations"
           onReorder={reorderIncomeOverrides}
           pendingDeleteRow={pendingDeleteRow}
@@ -767,10 +829,10 @@ export default function ScenarioBuilder({ isActive = false }) {
             id: `${item.label}-${index}`,
             cells: [
               item.label,
+              incomeOverrideAccountLabel(item),
+              shortMonth(item.start_date),
               currencyPrecise(item.amount),
               labelize(item.frequency || 'monthly'),
-              shortMonth(item.start_date),
-              item.end_date ? shortMonth(item.end_date) : '-',
               <InlineAmountInput
                 key={`income-override-update-${index}`}
                 ariaLabel={`Update ${item.label || 'income deviation'} amount`}
@@ -778,8 +840,9 @@ export default function ScenarioBuilder({ isActive = false }) {
                 disabled={busy}
                 onCommit={(value) => inlineUpdateIncomeOverrideAmount(index, value)}
               />,
-              item.active === false ? 'Inactive' : 'Active',
             ],
+            activeChecked: item.active !== false,
+            onToggleActive: (active) => toggleIncomeOverrideActive(index, active),
             onEdit: () => startEditIncomeOverride(item, index),
             onDelete: () => deleteIncomeOverride(index),
           }))}
@@ -862,7 +925,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           </button>
         </div>
         <DeviationTable
-          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Status', 'Update', 'Actions']}
+          columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR', 'Update', 'Actions']}
           sectionId="debt-deviations"
           onReorder={reorderDebtOverrides}
           pendingDeleteRow={pendingDeleteRow}
@@ -878,7 +941,6 @@ export default function ScenarioBuilder({ isActive = false }) {
               currencyPrecise(item.debt.minimum_monthly_payment),
               currencyPrecise(Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0)),
               item.debt.debt_type === 'other' ? labelize(item.debt.recurrence || 'monthly') : primaryApr(item),
-              item.debt.active === false ? 'Inactive' : 'Active',
               <InlineAmountInput
                 key={`debt-override-update-${index}`}
                 ariaLabel={`Update ${item.debt.name || 'debt deviation'} amount`}
@@ -887,6 +949,8 @@ export default function ScenarioBuilder({ isActive = false }) {
                 onCommit={(value) => inlineUpdateDebtOverrideAmount(index, value)}
               />,
             ],
+            activeChecked: item.debt.active !== false,
+            onToggleActive: (active) => toggleDebtOverrideActive(index, active),
             onEdit: () => startEditDebtOverride(item, index),
             onDelete: () => deleteDebtOverride(index),
           }))}
@@ -1004,9 +1068,11 @@ export default function ScenarioBuilder({ isActive = false }) {
         <ProjectionTable
           title="Side-by-Side Scenario Comparison"
           rows={normalizedScenarioRows}
-          preferredColumns={TABLE_COLUMN_VIEWS.scenarioComparison.defaultColumns}
+          preferredColumns={scenarioTableColumns}
+          hiddenColumns={hiddenScenarioColumns}
           initialVisibleCount={17}
           storageKey="founded.scenario.comparisonTable.v3"
+          visibilityResetKey={`scenario:${scenarioTableColumns.join('|')}:${hiddenScenarioColumns.join('|')}`}
         />
       ) : (
         <section className="card table-card">
@@ -1091,6 +1157,8 @@ function DeviationTable({
                 <ConfirmingActions
                   confirming={isPendingDelete(pendingDeleteRow, sectionId, row.id)}
                   loading={loading}
+                  activeChecked={row.activeChecked}
+                  onToggleActive={row.onToggleActive}
                   onConfirm={row.onDelete}
                   onCancel={onCancelDelete}
                   onEdit={row.onEdit}

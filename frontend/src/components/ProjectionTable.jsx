@@ -1,5 +1,5 @@
 import React from 'react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import FilterBar, { ExportDropdown } from './FilterBar.jsx';
 import YearGroupedTable from './YearGroupedTable.jsx';
 import { useSessionState } from '../utils/persistence.js';
@@ -21,16 +21,20 @@ export default function ProjectionTable({
   visibilityResetKey = '',
   exportOptions,
   onExport,
+  hiddenColumns = [],
+  onResetView,
 }) {
   const columns = useMemo(() => {
-    const discovered = getColumns(rows);
+    const hidden = new Set(hiddenColumns);
+    const discovered = getColumns(rows).filter((column) => !hidden.has(column));
     const preferred = preferredColumns.filter((column) => discovered.includes(column));
     const rest = discovered.filter((column) => !preferred.includes(column));
     return [...preferred, ...rest];
-  }, [rows, preferredColumns]);
+  }, [rows, preferredColumns, hiddenColumns]);
   const stateKey = storageKey || `founded.table.${title}`;
   const [filters, setFilters] = useSessionState(`${stateKey}.filters`, {});
   const [visibleColumns, setVisibleColumns] = useSessionState(`${stateKey}.visibleColumns`, []);
+  const lastVisibilityResetKey = useRef(null);
   const columnSignature = columns.join('|');
   const defaultVisibleColumns = useMemo(() => {
     const preferred = preferredColumns.filter((column) => columns.includes(column));
@@ -39,7 +43,16 @@ export default function ProjectionTable({
   const defaultVisibleSignature = defaultVisibleColumns.join('|');
 
   useEffect(() => {
-    setVisibleColumns(defaultVisibleColumns);
+    const resetContextChanged = lastVisibilityResetKey.current !== visibilityResetKey;
+    lastVisibilityResetKey.current = visibilityResetKey;
+    if (resetContextChanged) {
+      setVisibleColumns(defaultVisibleColumns);
+      return;
+    }
+    setVisibleColumns((current = []) => {
+      const valid = Array.isArray(current) ? current.filter((column) => columns.includes(column)) : [];
+      return valid.length ? valid : defaultVisibleColumns;
+    });
   }, [columnSignature, defaultVisibleSignature, visibilityResetKey]);
 
   return (
@@ -58,8 +71,7 @@ export default function ProjectionTable({
           onReset={() => {
             setFilters({});
             setVisibleColumns(defaultVisibleColumns);
-            onOwnerChange?.('overall');
-            onAccountChange?.('all');
+            onResetView?.();
           }}
           ownerOptions={ownerOptions}
           ownerValue={ownerValue}

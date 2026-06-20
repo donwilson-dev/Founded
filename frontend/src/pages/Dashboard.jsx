@@ -42,7 +42,7 @@ import {
   sameRecordId,
 } from '../utils/identity.js';
 import { useSessionState } from '../utils/persistence.js';
-import { TABLE_COLUMN_VIEWS, columnLabel, normalizeProjectionRows } from '../utils/tableHelpers.js';
+import { TABLE_COLUMN_VIEWS, columnLabel, hiddenEqualPlusColumns, normalizeProjectionRows } from '../utils/tableHelpers.js';
 
 const colors = ['#2563eb', '#7c3aed', '#10b981', '#ef4444', '#14b8a6', '#f59e0b'];
 
@@ -53,8 +53,8 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   const [selectedProjection, setSelectedProjection] = useSessionState('founded.dashboard.selectedProjection', null);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
-  const [projectionOwner, setProjectionOwner] = useState('overall');
-  const [projectionAccount, setProjectionAccount] = useState('all');
+  const [projectionOwner, setProjectionOwner] = useSessionState('founded.dashboard.projectionOwner', 'overall');
+  const [projectionAccount, setProjectionAccount] = useSessionState('founded.dashboard.projectionAccount', 'all');
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [headerRoot, setHeaderRoot] = useState(null);
 
@@ -94,10 +94,11 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   useEffect(() => {
     function handleSavedProjectionChange() {
       refreshSavedProjections();
+      if (projectionId) loadDashboard(projectionId);
     }
     window.addEventListener('founded:saved-projections-changed', handleSavedProjectionChange);
     return () => window.removeEventListener('founded:saved-projections-changed', handleSavedProjectionChange);
-  }, []);
+  }, [projectionId]);
 
   useEffect(() => {
     if (!status) return undefined;
@@ -108,8 +109,6 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   async function loadDashboard(id) {
     setProjectionId(id);
     setPendingDeleteId(null);
-    setProjectionOwner('overall');
-    setProjectionAccount('all');
     if (!id) {
       setDashboard(null);
       setSelectedProjection(null);
@@ -240,6 +239,12 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     [ownerFilteredProjectionRows, selectedProjection, effectiveProjectionOwner]
   );
   const activeProjectionColumns = accountSelected ? accountTableColumns : ownerSelected ? ownerTableColumns : projectionTableColumns;
+  const hiddenProjectionColumns = useMemo(
+    () => hiddenEqualPlusColumns(tableProjectionRows),
+    [tableProjectionRows]
+  );
+  const projectionColumnResetSignature = activeProjectionColumns.join('|');
+  const hiddenProjectionColumnSignature = hiddenProjectionColumns.join('|');
   const sampledChartRows = useMemo(() => annualChartRows(chartRows, 5), [chartRows]);
   const sampledCashRows = cashRows;
   const sampledInterestRows = useMemo(
@@ -263,6 +268,13 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     if (format === 'csv') exportProjectionCsv(exportPayload);
     if (format === 'xlsx') exportProjectionXlsx(exportPayload);
     if (format === 'pdf') exportProjectionPdf(exportPayload);
+  }
+
+  function changeProjectionOwner(owner) {
+    setProjectionOwner(owner);
+    if (owner === 'overall') {
+      setProjectionAccount('all');
+    }
   }
 
   useEffect(() => {
@@ -476,7 +488,7 @@ export default function Dashboard({ onNavigate, isActive = false }) {
           }
           ownerOptions={hasScenario ? null : ownerOptions}
           ownerValue={effectiveProjectionOwner}
-          onOwnerChange={setProjectionOwner}
+          onOwnerChange={changeProjectionOwner}
           accountOptions={accountOptions}
           accountValue={projectionAccount}
           onAccountChange={setProjectionAccount}
@@ -486,8 +498,12 @@ export default function Dashboard({ onNavigate, isActive = false }) {
             { value: 'pdf', label: 'PDF (.pdf)' },
           ]}
           onExport={exportDashboardProjection}
+          hiddenColumns={hiddenProjectionColumns}
+          onResetView={() => {
+            if (projectionId) loadDashboard(projectionId);
+          }}
           emptyText={accountSelected ? 'No account projection data available.' : undefined}
-          visibilityResetKey={`${projectionId || 'none'}:${effectiveProjectionOwner}:${projectionAccount}:${hasScenario ? 'scenario' : 'baseline'}`}
+          visibilityResetKey={`${projectionId || 'none'}:${effectiveProjectionOwner}:${projectionAccount}:${hasScenario ? 'scenario' : 'baseline'}:${projectionColumnResetSignature}:${hiddenProjectionColumnSignature}`}
         />
         </>
       ) : (
@@ -1105,7 +1121,7 @@ function debtPaidOffExportLookup(projection, hasScenario) {
   const debts = [
     ...(baseline.debts || []),
     ...(hasScenario ? assumptions.debts || [] : []),
-  ];
+  ].filter((debt) => debt?.active !== false);
   const entries = new Map();
   debts.forEach((debt) => {
     const label = debtPaidOffExportLabel(debt);
@@ -1228,13 +1244,14 @@ function duplicateDebtLabelContext(selectedProjection, hasScenario) {
   let hasDuplicates = false;
 
   groups.forEach((debts = []) => {
-    const counts = debts.reduce((map, debt) => {
+    const activeDebts = debts.filter((debt) => debt?.active !== false);
+    const counts = activeDebts.reduce((map, debt) => {
       const key = debtLookupKey(baseDebtName(debt?.name || debt?._projection_label || 'Debt'));
       map.set(key, (map.get(key) || 0) + 1);
       return map;
     }, new Map());
     const usedLabels = new Set();
-    debts.forEach((debt, index) => {
+    activeDebts.forEach((debt, index) => {
       const baseName = baseDebtName(debt?.name || debt?._projection_label || 'Debt');
       const baseKey = debtLookupKey(baseName);
       if ((counts.get(baseKey) || 0) <= 1) return;
@@ -2003,14 +2020,15 @@ function projectionDebtsForAccount(selectedProjection, accountId, includeScenari
   const baselineDebts = assumptions.baseline_assumptions?.debts || assumptions.debts || [];
   const scenarioDebts = includeScenario ? assumptions.debts || [] : [];
   const debts = [...baselineDebts, ...scenarioDebts]
+    .filter((debt) => debt?.active !== false)
     .filter((debt) => String(getDebtRefId(debt)) === String(accountId));
   return uniqueBy(debts, (debt) => `${debt._projection_label || debt.name || 'Debt'}:${debt.debt_type || ''}`);
 }
 
 function projectionDebtsForScope(selectedProjection, hasScenario) {
   const assumptions = selectedProjection?.assumptions_snapshot || {};
-  if (hasScenario) return assumptions.debts || [];
-  return assumptions.baseline_assumptions?.debts || assumptions.debts || [];
+  if (hasScenario) return (assumptions.debts || []).filter((debt) => debt?.active !== false);
+  return (assumptions.baseline_assumptions?.debts || assumptions.debts || []).filter((debt) => debt?.active !== false);
 }
 
 function accountProjectionColumns(rows = []) {
@@ -2125,7 +2143,7 @@ function ownerDebtTypeColumns(selectedProjection, owner) {
   const debts = [
     ...(assumptions.baseline_assumptions?.debts || []),
     ...(assumptions.debts || []),
-  ];
+  ].filter((debt) => debt?.active !== false);
   return [...new Set(
     debts
       .filter((debt) => ownerAccountIds.has(String(getDebtRefId(debt))))
@@ -2443,7 +2461,9 @@ function ownerSourcesForAssumptions(assumptions = {}, ownerAccountIds) {
     ownerAccountIds,
     incomeSources: incomeSources.filter((source) => !isAccountTransfer(source) && ownerAccountIds.has(String(getAccountRefId(source)))),
     transfers: incomeSources.filter((source) => isAccountTransfer(source) && transferTouchesOwner(source, ownerAccountIds)),
-    debts: (assumptions.debts || []).filter((debt) => ownerAccountIds.has(String(getDebtRefId(debt)))),
+    debts: (assumptions.debts || [])
+      .filter((debt) => debt?.active !== false)
+      .filter((debt) => ownerAccountIds.has(String(getDebtRefId(debt)))),
   };
 }
 

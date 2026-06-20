@@ -582,6 +582,33 @@ export default function BaselineBuilder({ isActive = false }) {
     }
   }
 
+  async function toggleAccountBalanceActive(balance, active) {
+    if ((balance.active !== false) === active) return;
+    const balanceId = recordId(balance);
+    setLoading(true);
+    try {
+      const updated = await foundedApi.updateAccountBalance(balanceId, toAccountBalancePayload({
+        name: balance.name || '',
+        owner: balance.owner || '',
+        accountType: balance.account_type || balance.accountType || '',
+        amount: balance.amount ?? 0,
+        date: balance.date || todayDate(),
+        notes: balance.notes || '',
+        active,
+      }));
+      const nextAccountBalances = accountBalances.map((item) => (String(recordId(item)) === String(recordId(updated)) ? updated : item));
+      setAccountBalances(nextAccountBalances);
+      await autoSaveBaselineProjection({
+        accountBalances: nextAccountBalances,
+        successMessage: 'Account balance active state updated. Projection regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function deleteAccountBalance(balance) {
     const balanceId = recordId(balance);
     if (accountIsReferenced(balanceId)) {
@@ -653,6 +680,37 @@ export default function BaselineBuilder({ isActive = false }) {
       await autoSaveBaselineProjection({
         incomeSources: nextIncomeSources,
         successMessage: 'Income source deleted. Projection regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleIncomeActive(source, active) {
+    if ((source.active !== false) === active) return;
+    const sourceId = incomeRecordId(source);
+    setLoading(true);
+    try {
+      const updated = await foundedApi.updateIncomeSource(sourceId, toIncomePayload({
+        label: source.label || '',
+        accountBalanceId: incomeAccountSelectionId(source),
+        isAccountTransfer: Boolean(source.is_account_transfer ?? source.isAccountTransfer),
+        fromAccountId: incomeFromAccountSelectionId(source),
+        toAccountId: incomeToAccountSelectionId(source),
+        amount: source.amount ?? 0,
+        startDate: source.start_date || '',
+        endDate: source.end_date || '',
+        frequency: source.frequency || 'monthly',
+        notes: source.notes || '',
+        active,
+      }));
+      const nextIncomeSources = incomeSources.map((item) => (String(incomeRecordId(item)) === String(incomeRecordId(updated)) ? updated : item));
+      setIncomeSources(nextIncomeSources);
+      await autoSaveBaselineProjection({
+        incomeSources: nextIncomeSources,
+        successMessage: 'Income active state updated. Projection regenerated and saved.',
       });
     } catch (error) {
       setStatus(error.message);
@@ -762,6 +820,47 @@ export default function BaselineBuilder({ isActive = false }) {
       await autoSaveBaselineProjection({
         debts: nextDebts,
         successMessage: 'Debt balance updated. Projection regenerated and saved.',
+      });
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleDebtActive(debt, active) {
+    if ((debt.active !== false) === active) return;
+    setLoading(true);
+    try {
+      const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
+      const debtId = recordId(debt);
+      await foundedApi.updateDebt(debtId, toDebtPayload({
+        name: debt.name || '',
+        accountBalanceId: debtAccountSelectionId(debt),
+        debtType: debt.debt_type || 'credit_card',
+        startingBalance: debt.starting_balance ?? debt.current_balance ?? 0,
+        currentBalance: debt.current_balance ?? 0,
+        minimumMonthlyPayment: debt.minimum_monthly_payment ?? 0,
+        actualPayment,
+        plannedExtraPayment: debt.planned_extra_payment ?? 0,
+        paymentDate: debt.payment_date || debt.paymentDate || '',
+        startDate: debt.start_date || '',
+        payoffTargetDate: debt.payoff_target_date || '',
+        priorityNumber: debt.priority_number ?? '',
+        recurrence: debt.recurrence || 'monthly',
+        notes: debt.notes || '',
+        active,
+      }));
+      const updated = await fetchDebtWithRates(debtId, debt);
+      const updatedWithRates = {
+        ...updated,
+        interest_rates: updated.interest_rates || debt.interest_rates || [],
+      };
+      const nextDebts = debts.map((item) => (String(recordId(item)) === String(recordId(updatedWithRates)) ? updatedWithRates : item));
+      setDebts(nextDebts);
+      await autoSaveBaselineProjection({
+        debts: nextDebts,
+        successMessage: 'Debt active state updated. Projection regenerated and saved.',
       });
     } catch (error) {
       setStatus(error.message);
@@ -1015,7 +1114,7 @@ export default function BaselineBuilder({ isActive = false }) {
         </div>
         <div className="subsection-title" data-baseline-section="account-balances">Account Balances</div>
         <CrudTable
-          columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Update', 'Status', 'Actions']}
+          columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount', 'Update', 'Actions']}
           sectionId="account-balances"
           onReorder={reorderAccountBalances}
           pendingDeleteRow={pendingDeleteRow}
@@ -1037,8 +1136,9 @@ export default function BaselineBuilder({ isActive = false }) {
                 disabled={busy}
                 onCommit={(value) => inlineUpdateAccountBalanceAmount(item, value)}
               />,
-              item.active ? 'Active' : 'Inactive',
             ],
+            activeChecked: item.active !== false,
+            onToggleActive: (active) => toggleAccountBalanceActive(item, active),
             onEdit: () => startEditAccountBalance(item),
             onDelete: () => deleteAccountBalance(item),
           }))}
@@ -1068,7 +1168,7 @@ export default function BaselineBuilder({ isActive = false }) {
         )}
         <div className="subsection-title">Income Sources</div>
         <CrudTable
-          columns={['Name', 'Account', 'Start Date', 'Amount', 'Frequency', 'Status', 'Actions']}
+          columns={['Name', 'Account', 'Start Date', 'Amount', 'Frequency', 'Actions']}
           sectionId="income-sources"
           onReorder={reorderIncomeSources}
           pendingDeleteRow={pendingDeleteRow}
@@ -1083,8 +1183,9 @@ export default function BaselineBuilder({ isActive = false }) {
               shortMonth(item.start_date),
               currencyPrecise(item.amount),
               labelize(item.frequency),
-              item.active ? 'Active' : 'Inactive',
             ],
+            activeChecked: item.active !== false,
+            onToggleActive: (active) => toggleIncomeActive(item, active),
             onEdit: () => startEditIncome(item),
             onDelete: () => deleteIncome(item),
           }))}
@@ -1199,6 +1300,8 @@ export default function BaselineBuilder({ isActive = false }) {
                 onCommit={(value) => inlineUpdateDebtBalance(item, value)}
               />,
             ],
+            activeChecked: item.active !== false,
+            onToggleActive: (active) => toggleDebtActive(item, active),
             onEdit: () => startEditDebt(item),
             onDelete: () => deleteDebt(item),
           }))}
@@ -1407,6 +1510,8 @@ function CrudTable({
                 <ConfirmingActions
                   confirming={isPendingDelete(pendingDeleteRow, sectionId, row.id)}
                   loading={loading}
+                  activeChecked={row.activeChecked}
+                  onToggleActive={row.onToggleActive}
                   onConfirm={row.onDelete}
                   onCancel={onCancelDelete}
                   onEdit={row.onEdit}

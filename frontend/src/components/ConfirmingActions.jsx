@@ -4,13 +4,17 @@ import { Edit3, Trash2 } from 'lucide-react';
 export default function ConfirmingActions({
   confirming = false,
   loading = false,
+  activeChecked,
+  onToggleActive,
   onConfirm,
   onCancel,
   onEdit,
   onRequestDelete,
   editLabel = 'Edit row',
   deleteLabel = 'Delete row',
+  activeLabel = 'Active',
 }) {
+  const hasActiveToggle = typeof onToggleActive === 'function';
   return (
     <div className="row-actions">
       {confirming ? (
@@ -24,6 +28,17 @@ export default function ConfirmingActions({
         </>
       ) : (
         <>
+          {hasActiveToggle ? (
+            <input
+              className="active-quick-toggle"
+              type="checkbox"
+              checked={activeChecked !== false}
+              disabled={loading}
+              title="Active"
+              aria-label={activeLabel}
+              onChange={(event) => onToggleActive(event.target.checked)}
+            />
+          ) : null}
           <button type="button" className="icon-button table-action" onClick={onEdit} title="Edit" aria-label={editLabel}>
             <Edit3 size={15} />
           </button>

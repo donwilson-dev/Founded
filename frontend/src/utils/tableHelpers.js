@@ -78,6 +78,50 @@ export function getColumns(rows = []) {
   return [...discovered].filter((key) => rows.some((row) => Object.prototype.hasOwnProperty.call(row, key)));
 }
 
+export function comparableCellValue(value) {
+  if (Array.isArray(value)) return value.join('|');
+  if (value === null || value === undefined || value === '') return '';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) / 100 : String(value);
+}
+
+export function plusColumnHasDeviation(rows = [], column, plusColumn = `${column}+`) {
+  return rows.some((row) => {
+    if (!Object.prototype.hasOwnProperty.call(row, plusColumn)) return false;
+    return comparableCellValue(row[column]) !== comparableCellValue(row[plusColumn]);
+  });
+}
+
+export function hiddenEqualPlusColumns(rows = []) {
+  const columns = getColumns(rows);
+  return columns.filter((column) => {
+    if (!column.endsWith('+')) return false;
+    const baseColumn = column.slice(0, -1);
+    return columns.includes(baseColumn) && !plusColumnHasDeviation(rows, baseColumn, column);
+  });
+}
+
+function pairedMetricColumns(rows = [], column) {
+  const plusColumn = `${column}+`;
+  if (!rows.some((row) => Object.prototype.hasOwnProperty.call(row, column))) return [];
+  return plusColumnHasDeviation(rows, column, plusColumn) ? [column, plusColumn] : [column];
+}
+
+export function scenarioComparisonColumns(rows = []) {
+  return [
+    'month',
+    ...pairedMetricColumns(rows, 'Income'),
+    ...pairedMetricColumns(rows, 'Total Debt Payments'),
+    ...pairedMetricColumns(rows, 'Bills'),
+    ...pairedMetricColumns(rows, 'Interest'),
+    ...pairedMetricColumns(rows, 'Principal'),
+    ...pairedMetricColumns(rows, 'Total Debt Balance'),
+    'Debts Paid Off',
+    ...pairedMetricColumns(rows, 'Monthly Surplus'),
+    ...pairedMetricColumns(rows, 'Cash Balance'),
+  ];
+}
+
 export function columnLabel(column) {
   if (column === 'month') return 'Month';
   if (column === 'Total Debt') return 'Total Debt Balance';

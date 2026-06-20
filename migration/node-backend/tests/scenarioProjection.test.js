@@ -355,6 +355,232 @@ test('native scenario projection preserves baseline debt identity when adding a 
   assert.equal(Object.prototype.hasOwnProperty.call(march, 'Card (Credit Card - $100/mo)+'), false);
 });
 
+test('native scenario projection ignores inactive overrides but preserves them in the snapshot', () => {
+  const caseData = baseCase({
+    payload: {
+      income_overrides: [
+        income({ id: 1, label: 'Salary', amount: 4500, active: false }),
+      ],
+      debt_overrides: [
+        debt({ id: 1, name: 'Card', current_balance: 500, minimum_monthly_payment: 500, active: false }),
+      ],
+      interest_rate_overrides: [
+        rate({ id: 2, debt_id: 1, apr_percentage: 0 }),
+      ],
+    },
+  });
+
+  const result = nodeResult({ op: 'build_scenario_response', ...caseData });
+  const firstRow = result.generated_rows[0];
+
+  assert.equal(firstRow.Income, 3000);
+  assert.equal(firstRow['Income+'], 3000);
+  assert.equal(firstRow['Total Debt Payments'], 100);
+  assert.equal(firstRow['Total Debt Payments+'], 100);
+  assert.equal(result.assumptions_snapshot.scenario_overrides.income_overrides[0].active, false);
+  assert.equal(result.assumptions_snapshot.scenario_overrides.debt_overrides[0].active, false);
+});
+
+test('native scenario projection ignores inactive debt APR overrides linked by native legacy id', () => {
+  const caseData = baseCase({
+    payload: {
+      debt_overrides: [
+        debt({
+          id: 'native-debt-id',
+          legacyId: 1,
+          name: 'Card',
+          current_balance: 500,
+          minimum_monthly_payment: 500,
+          active: false,
+        }),
+      ],
+      interest_rate_overrides: [
+        rate({ debt_id: 1, apr_percentage: 0 }),
+      ],
+    },
+  });
+
+  const result = nodeResult({ op: 'build_scenario_response', ...caseData });
+  const firstRow = result.generated_rows[0];
+
+  assert.equal(firstRow['Total Debt Payments'], firstRow['Total Debt Payments+']);
+  assert.equal(firstRow['Total Interest Charged'], firstRow['Total Interest Charged+']);
+  assert.equal(firstRow['Total Debt'], firstRow['Total Debt+']);
+  assert.equal(firstRow['Monthly Surplus'], firstRow['Monthly Surplus+']);
+  assert.equal(firstRow['Cash Balance'], firstRow['Cash Balance+']);
+  assert.equal(result.assumptions_snapshot.scenario_overrides.debt_overrides[0].active, false);
+});
+
+test('native scenario projection preserves saved baseline debt metrics when no debt deviations are active', () => {
+  const caseData = baseCase({ baseline: { months: 3 } });
+  const baselineProjection = generatedBaseline(caseData);
+  baselineProjection.generated_rows = baselineProjection.generated_rows.map((row, index) => ({
+    ...row,
+    Income: 3000,
+    'Total Debt Payments': 220 + index,
+    Bills: 30,
+    'Total Interest Charged': 440 + index,
+    'Total Debt': 5400 - index,
+    'Monthly Surplus': 2750 - index,
+    'Cash Balance': 3750 + index,
+  }));
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({ id: 1, current_balance: 500, minimum_monthly_payment: 500, active: false }),
+      ],
+      interest_rate_overrides: [
+        rate({ id: 2, debt_id: 1, apr_percentage: 0 }),
+      ],
+    },
+  );
+  const firstRow = result.generated_rows[0];
+
+  assert.equal(firstRow['Total Debt Payments+'], firstRow['Total Debt Payments']);
+  assert.equal(firstRow['Total Interest Charged+'], firstRow['Total Interest Charged']);
+  assert.equal(firstRow['Total Debt+'], firstRow['Total Debt']);
+  assert.equal(firstRow['Monthly Surplus+'], firstRow['Monthly Surplus']);
+  assert.equal(firstRow['Cash Balance+'], firstRow['Cash Balance']);
+});
+
+test('native scenario projection preserves baseline debt metrics for income-only scenarios', () => {
+  const caseData = baseCase({ baseline: { months: 3 } });
+  const baselineProjection = generatedBaseline(caseData);
+  baselineProjection.generated_rows = baselineProjection.generated_rows.map((row, index) => ({
+    ...row,
+    Income: 3000,
+    'Total Debt Payments': 220 + index,
+    Bills: 30,
+    'Total Interest Charged': 440 + index,
+    'Total Debt': 5400 - index,
+    'Monthly Surplus': 2750 - index,
+    'Cash Balance': 3750 + index,
+  }));
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      income_overrides: [
+        income({ id: 1, label: 'Salary', amount: 3500 }),
+      ],
+      debt_overrides: [
+        debt({ id: 1, current_balance: 500, minimum_monthly_payment: 500, active: false }),
+      ],
+      interest_rate_overrides: [
+        rate({ id: 2, debt_id: 1, apr_percentage: 0 }),
+      ],
+    },
+  );
+  const firstRow = result.generated_rows[0];
+
+  assert.equal(firstRow['Total Debt Payments+'], firstRow['Total Debt Payments']);
+  assert.equal(firstRow['Total Interest Charged+'], firstRow['Total Interest Charged']);
+  assert.equal(firstRow['Total Debt+'], firstRow['Total Debt']);
+  assert.equal(firstRow['Income+'], 3500);
+  assert.equal(firstRow['Monthly Surplus+'], 3250);
+  assert.equal(firstRow['Cash Balance+'], 4250);
+});
+
+test('native scenario projection preserves saved baseline debt metrics for active income-only scenarios', () => {
+  const caseData = baseCase({ baseline: { months: 3 } });
+  const baselineProjection = generatedBaseline(caseData);
+  baselineProjection.generated_rows = baselineProjection.generated_rows.map((row, index) => ({
+    ...row,
+    Income: 3000,
+    Card: 800 - index,
+    'Card Payment': 125,
+    'Card Interest': 41 + index,
+    'Card Principal': 84 - index,
+    'Total Debt Payments': 125,
+    Bills: 45,
+    'Total Interest Charged': 41 + index,
+    'Total Debt': 800 - index,
+    'Monthly Surplus': 2830,
+    'Cash Balance': 3830 + (index * 2830),
+  }));
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      income_overrides: [
+        income({ id: 1, label: 'Salary', amount: 3500 }),
+      ],
+      debt_overrides: [],
+      interest_rate_overrides: [],
+    },
+  );
+  const firstRow = result.generated_rows[0];
+
+  assert.equal(firstRow['Income+'], 3500);
+  assert.equal(firstRow['Card+'], firstRow.Card);
+  assert.equal(firstRow['Card Payment+'], firstRow['Card Payment']);
+  assert.equal(firstRow['Card Interest+'], firstRow['Card Interest']);
+  assert.equal(firstRow['Card Principal+'], firstRow['Card Principal']);
+  assert.equal(firstRow['Total Debt Payments+'], firstRow['Total Debt Payments']);
+  assert.equal(firstRow['Total Interest Charged+'], firstRow['Total Interest Charged']);
+  assert.equal(firstRow['Total Debt+'], firstRow['Total Debt']);
+  assert.equal(firstRow['Card Difference'], 0);
+  assert.equal(firstRow['Card Payment Difference'], 0);
+  assert.equal(firstRow['Total Debt Payments Difference'], 0);
+  assert.equal(firstRow['Total Interest Charged Difference'], 0);
+  assert.equal(firstRow['Total Debt Difference'], 0);
+  assert.equal(firstRow['Monthly Surplus+'], 3330);
+  assert.equal(firstRow['Monthly Surplus Difference'], 500);
+  assert.equal(firstRow['Cash Balance+'], 4330);
+  assert.equal(firstRow['Cash Balance Difference'], 500);
+});
+
+test('native scenario projection preserves saved baseline rows when income overrides are inactive', () => {
+  const caseData = baseCase({ baseline: { months: 3 } });
+  const baselineProjection = generatedBaseline(caseData);
+  baselineProjection.generated_rows = baselineProjection.generated_rows.map((row, index) => ({
+    ...row,
+    Income: 3000,
+    Card: 700 - index,
+    'Card Payment': 90 + index,
+    'Card Interest': 25 + index,
+    'Card Principal': 65,
+    'Total Debt Payments': 90 + index,
+    Bills: 30,
+    'Total Interest Charged': 25 + index,
+    'Total Debt': 700 - index,
+    'Monthly Surplus': 2880 - index,
+    'Cash Balance': 3880 + index,
+  }));
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      income_overrides: [
+        income({ id: 1, label: 'Salary', amount: 3500, active: false }),
+      ],
+    },
+  );
+  const firstRow = result.generated_rows[0];
+
+  assert.equal(firstRow['Income+'], firstRow.Income);
+  assert.equal(firstRow['Card+'], firstRow.Card);
+  assert.equal(firstRow['Card Payment+'], firstRow['Card Payment']);
+  assert.equal(firstRow['Card Interest+'], firstRow['Card Interest']);
+  assert.equal(firstRow['Card Principal+'], firstRow['Card Principal']);
+  assert.equal(firstRow['Total Debt Payments+'], firstRow['Total Debt Payments']);
+  assert.equal(firstRow['Total Interest Charged+'], firstRow['Total Interest Charged']);
+  assert.equal(firstRow['Total Debt+'], firstRow['Total Debt']);
+  assert.equal(firstRow['Monthly Surplus+'], firstRow['Monthly Surplus']);
+  assert.equal(firstRow['Cash Balance+'], firstRow['Cash Balance']);
+  assert.equal(firstRow['Income Difference'], 0);
+  assert.equal(firstRow['Total Interest Charged Difference'], 0);
+  assert.equal(firstRow['Total Debt Difference'], 0);
+  assert.equal(firstRow['Monthly Surplus Difference'], 0);
+  assert.equal(firstRow['Cash Balance Difference'], 0);
+});
+
 test('native scenario projection matches FastAPI account transfers and other-debt bills', () => {
   assertParity([
     {

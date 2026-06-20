@@ -89,6 +89,111 @@ function normalizeScenarioMonths(payload = {}) {
   };
 }
 
+function debtReferenceKeys(item = {}) {
+  return [
+    item.id,
+    item._id,
+    item.legacy_id,
+    item.legacyId,
+  ]
+    .filter((id) => id !== null && id !== undefined && id !== '')
+    .map(String);
+}
+
+function rateDebtReferenceKeys(rate = {}) {
+  return [
+    rate.debt_id,
+    rate.debtId,
+    rate.legacy_debt_id,
+    rate.legacyDebtId,
+  ]
+    .filter((id) => id !== null && id !== undefined && id !== '')
+    .map(String);
+}
+
+function roundCurrency(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function comparableMetric(value) {
+  if (Array.isArray(value)) return JSON.stringify(value);
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? roundCurrency(numeric) : String(value ?? '');
+}
+
+function debtMetricsDifferFromBaseline(scenarioRows = [], baselineRows = []) {
+  const scenarioByMonth = new Map((scenarioRows || []).map((row) => [row.month, row]));
+  const scenarioOwnedKeys = new Set(['month', 'Income', 'Monthly Surplus', 'Cash Balance']);
+
+  return (baselineRows || []).some((baselineRow) => {
+    const scenarioRow = scenarioByMonth.get(baselineRow.month);
+    if (!scenarioRow) return false;
+    const keys = new Set([...Object.keys(baselineRow), ...Object.keys(scenarioRow)]);
+    for (const key of keys) {
+      if (scenarioOwnedKeys.has(key) || key.endsWith('+') || key.endsWith(' Difference')) continue;
+      if (comparableMetric(baselineRow[key]) !== comparableMetric(scenarioRow[key])) {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
+function alignDebtMetricsToBaselineRows(scenarioRows = [], baselineRows = [], hasActiveIncomeChanges = false) {
+  const baselineByMonth = new Map((baselineRows || []).map((row) => [row.month, row]));
+  let cashBalance = null;
+  const scenarioOwnedKeys = new Set(['month', 'Income', 'Monthly Surplus', 'Cash Balance']);
+
+  for (const row of scenarioRows || []) {
+    const baselineRow = baselineByMonth.get(row.month);
+    if (!baselineRow) continue;
+
+    const income = hasActiveIncomeChanges
+      ? Number(row.Income ?? baselineRow.Income ?? 0)
+      : Number(baselineRow.Income ?? row.Income ?? 0);
+
+    for (const key of Object.keys(row)) {
+      if (!scenarioOwnedKeys.has(key) && !Object.prototype.hasOwnProperty.call(baselineRow, key)) {
+        delete row[key];
+      }
+    }
+
+    for (const [key, value] of Object.entries(baselineRow)) {
+      if (scenarioOwnedKeys.has(key)) continue;
+      row[key] = Array.isArray(value) ? [...value] : value;
+    }
+
+    row.Income = roundCurrency(income);
+
+    const monthlySurplus = roundCurrency(income - Number(row['Total Debt Payments'] || 0) - Number(row.Bills || 0));
+    if (cashBalance === null) {
+      cashBalance = roundCurrency(Number(baselineRow['Cash Balance'] || 0) - Number(baselineRow['Monthly Surplus'] || 0));
+    }
+    cashBalance = roundCurrency(cashBalance + monthlySurplus);
+    row['Monthly Surplus'] = monthlySurplus;
+    row['Cash Balance'] = cashBalance;
+  }
+}
+
+function alignScenarioRowsToBaselineRows(scenarioRows = [], baselineRows = []) {
+  const baselineByMonth = new Map((baselineRows || []).map((row) => [row.month, row]));
+
+  for (const row of scenarioRows || []) {
+    const baselineRow = baselineByMonth.get(row.month);
+    if (!baselineRow) continue;
+
+    for (const key of Object.keys(row)) {
+      if (key !== 'month' && !Object.prototype.hasOwnProperty.call(baselineRow, key)) {
+        delete row[key];
+      }
+    }
+
+    for (const [key, value] of Object.entries(baselineRow)) {
+      row[key] = Array.isArray(value) ? [...value] : value;
+    }
+  }
+}
+
 function baselineStartMonth(baselineRows) {
   if (!baselineRows || baselineRows.length === 0) {
     const error = new Error('Selected baseline has no generated rows');
@@ -130,19 +235,39 @@ function generateScenarioProjection(
   months = null,
   scenarioEndMonth = null,
 ) {
+  const debtOverrideItems = debtOverrides || [];
+  const incomeOverrideItems = incomeOverrides || [];
+  const activeIncomeOverrides = incomeOverrideItems.filter((item) => item?.active !== false);
+  const hasInactiveIncomeInputs = incomeOverrideItems.some((item) => item?.active === false);
+  const activeDebtOverrides = debtOverrideItems.filter((item) => item?.active !== false);
+  const inactiveDebtIds = new Set(
+    debtOverrideItems
+      .filter((item) => item?.active === false)
+      .flatMap(debtReferenceKeys)
+  );
+  const hasInactiveDebtInputs = inactiveDebtIds.size > 0
+    || (interestRateOverrides || []).some((rate) => rate?.active === false);
+  const activeInterestRateOverrides = (interestRateOverrides || []).filter((rate) => {
+    if (rate?.active === false) return false;
+    const rateDebtIds = rateDebtReferenceKeys(rate);
+    return !rateDebtIds.some((id) => inactiveDebtIds.has(id));
+  });
+  const hasActiveIncomeChanges = activeIncomeOverrides.length > 0;
+  const hasActiveDebtChanges = activeDebtOverrides.length > 0 || activeInterestRateOverrides.length > 0;
+  const hasInactiveScenarioInputs = hasInactiveIncomeInputs || hasInactiveDebtInputs;
   const { items: income } = mergeAssumptionCollection(
     baselineAssumptions.income_sources || [],
-    incomeOverrides,
+    activeIncomeOverrides,
     'label',
   );
   const { items: debts, overrideKeys: overriddenDebtKeys } = mergeAssumptionCollection(
     baselineAssumptions.debts || [],
-    debtOverrides,
+    activeDebtOverrides,
     null,
   );
   const { items: rates } = mergeAssumptionCollection(
     baselineAssumptions.interest_rates || [],
-    interestRateOverrides,
+    activeInterestRateOverrides,
   );
 
   let nextTemporaryDebtId = -1;
@@ -180,6 +305,13 @@ function generateScenarioProjection(
     null,
     baselineAssumptions.account_balances || [],
   );
+  if (!hasActiveIncomeChanges && !hasActiveDebtChanges && hasInactiveScenarioInputs) {
+    alignScenarioRowsToBaselineRows(scenario.generated_rows, baselineRows);
+  } else if (!hasActiveDebtChanges
+    && (hasInactiveDebtInputs || hasActiveIncomeChanges)
+    && debtMetricsDifferFromBaseline(scenario.generated_rows, baselineRows)) {
+    alignDebtMetricsToBaselineRows(scenario.generated_rows, baselineRows, hasActiveIncomeChanges);
+  }
   const scenarioByMonth = new Map(scenario.generated_rows.map((row) => [row.month, row]));
   const baselineAccountProjectionRows = generateAccountProjectionRows(
     baselineAssumptions.income_sources || [],
@@ -187,7 +319,12 @@ function generateScenarioProjection(
     baselineRows,
     baselineAssumptions.account_balances || [],
   );
-  const scenarioAccountProjectionRows = scenario.account_projection_rows || [];
+  const scenarioAccountProjectionRows = generateAccountProjectionRows(
+    income,
+    debts,
+    scenario.generated_rows,
+    baselineAssumptions.account_balances || [],
+  );
 
   const rows = [];
   for (const baselineRow of baselineRows || []) {

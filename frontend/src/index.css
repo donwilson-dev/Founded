@@ -374,7 +374,7 @@ button {
 
 .mini-table th.actions-column,
 .mini-table td.actions-column {
-  width: 82px;
+  width: 108px;
   text-align: center !important;
 }
 
@@ -487,7 +487,20 @@ button {
 .row-actions {
   display: inline-flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 4px;
+}
+
+.active-quick-toggle {
+  width: 16px;
+  height: 16px;
+  margin: 0 2px 0 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.active-quick-toggle:disabled {
+  cursor: not-allowed;
 }
 
 .table-action {
