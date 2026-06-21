@@ -84,6 +84,12 @@ function monthlyIncomeAmount(source, month) {
   );
 }
 
+function calculationError(message) {
+  const error = new Error(message);
+  error.statusCode = 422;
+  return error;
+}
+
 function baseActualPayment(debt) {
   const plainDebt = toPlainObject(debt);
   const minimum = Number(plainDebt.minimum_monthly_payment);
@@ -92,6 +98,41 @@ function baseActualPayment(debt) {
     return Math.max(Number(actual), minimum);
   }
   return minimum + Number(plainDebt.planned_extra_payment || 0);
+}
+
+function targetPayoffActive(debt) {
+  const plainDebt = toPlainObject(debt);
+  return plainDebt.debt_type !== 'other' && Boolean(plainDebt.target_payoff_active);
+}
+
+function validateTargetPayoffDebt(debt, projectionStartMonth) {
+  const plainDebt = toPlainObject(debt);
+  if (!targetPayoffActive(plainDebt)) {
+    return;
+  }
+
+  if (!plainDebt.payoff_target_date) {
+    throw calculationError(`${plainDebt.name || 'Debt'} needs a Target Payoff Date.`);
+  }
+
+  const targetMonth = firstOfMonth(plainDebt.payoff_target_date);
+  const startMonth = firstOfMonth(projectionStartMonth);
+  if (targetMonth <= startMonth) {
+    throw calculationError('Target Payoff Date must be after the projection start month.');
+  }
+}
+
+function targetPayoffMonth(debt) {
+  const plainDebt = toPlainObject(debt);
+  if (!targetPayoffActive(plainDebt)) {
+    return null;
+  }
+
+  if (!plainDebt.payoff_target_date) {
+    throw calculationError(`${plainDebt.name || 'Debt'} needs a Target Payoff Date.`);
+  }
+
+  return firstOfMonth(plainDebt.payoff_target_date);
 }
 
 function debtTypeLabel(value) {
@@ -262,6 +303,9 @@ module.exports = {
   isTrueDebt,
   monthlyIncomeAmount,
   baseActualPayment,
+  targetPayoffActive,
+  targetPayoffMonth,
+  validateTargetPayoffDebt,
   debtTypeLabel,
   paymentLabel,
   debtIdentity,

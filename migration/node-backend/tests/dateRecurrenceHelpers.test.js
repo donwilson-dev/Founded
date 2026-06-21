@@ -182,6 +182,20 @@ test('recurrence helpers preserve expected business edge cases', () => {
   assert.equal(helpers.occurrenceCountForMonth('bi_weekly', '2026-05-01', null, '2026-05-01'), 3);
   assert.equal(helpers.occurrenceCountForMonth('first_and_fifteenth', '2026-07-01', null, '2026-07-01'), 2);
   assert.equal(helpers.occurrenceCountForMonth('first_and_fifteenth', '2026-07-01', '2026-07-14', '2026-07-01'), 1);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2026-03-15', null, '2026-03-01'), 1);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2026-03-15', null, '2026-04-01'), 0);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2026-03-15', '2027-03-15', '2027-03-01'), 1);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2026-03-15', '2027-03-15', '2028-03-01'), 0);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2028-02-29', null, '2029-02-01'), 1);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2028-02-29', null, '2030-02-01'), 1);
+  assert.equal(helpers.occurrenceCountForMonth('yearly', '2028-02-29', null, '2032-02-01'), 1);
+  assert.equal(helpers.formatDate(helpers.yearlyOccurrenceDate('2028-02-29', 2029)), '2029-02-28');
+  assert.equal(helpers.formatDate(helpers.yearlyOccurrenceDate('2028-02-29', 2032)), '2032-02-29');
+  assert.equal(helpers.isYearlyEndDateAnchored('2026-03-15', '2028-03-15'), true);
+  assert.equal(helpers.isYearlyEndDateAnchored('2026-03-15', '2028-04-15'), false);
+  assert.equal(helpers.isYearlyEndDateAnchored('2026-03-15', '2028-03-20'), false);
+  assert.equal(helpers.isYearlyEndDateAnchored('2028-02-29', '2029-02-28'), true);
+  assert.equal(helpers.isYearlyEndDateAnchored('2028-02-29', '2032-02-29'), true);
 });
 
 test('active-month helper matches FastAPI output', () => {

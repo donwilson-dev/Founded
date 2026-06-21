@@ -4,13 +4,14 @@ const Account = require('../models/Account');
 const Debt = require('../models/Debt');
 const Income = require('../models/Income');
 const SavedProjection = require('../models/SavedProjection');
+const { isYearlyEndDateAnchored } = require('./calculations/dateRecurrenceHelpers');
 
 const ACCOUNT_REFERENCE_MESSAGE =
   'This account is currently referenced by existing records. Reassign or remove dependent records before deleting this account.';
 
 const incomeFrequencies = new Set(['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly']);
 const debtTypes = new Set(['credit_card', 'personal_loan', 'vehicle_loan', 'student_loan', 'other']);
-const debtRecurrences = new Set(['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly']);
+const debtRecurrences = new Set(['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly', 'yearly']);
 const projectionTypes = new Set(['baseline', 'scenario']);
 
 function httpError(statusCode, message) {
@@ -306,6 +307,7 @@ async function debtPayload(payload, existing = null) {
     payment_date: dateField(payload, 'payment_date'),
     start_date: dateField(payload, 'start_date', { required: !existing }),
     payoff_target_date: dateField(payload, 'payoff_target_date'),
+    target_payoff_active: booleanField(payload, 'target_payoff_active', existing ? undefined : false),
     priority_number: numberField(payload, 'priority_number', { min: 1 }),
     active: booleanField(payload, 'active', existing ? undefined : true),
     notes: stringField(payload, 'notes', { max: 10000 }),
@@ -320,7 +322,14 @@ async function debtPayload(payload, existing = null) {
 
   const start = values.start_date ?? existing?.start_date;
   const payoff = values.payoff_target_date ?? existing?.payoff_target_date;
+  const debtType = values.debt_type ?? existing?.debt_type;
+  const recurrence = values.recurrence ?? existing?.recurrence;
+  const targetActive = values.target_payoff_active ?? existing?.target_payoff_active ?? false;
   if (start && payoff && payoff < start) throw httpError(422, 'payoff_target_date cannot be before start_date');
+  if (debtType === 'other' && recurrence === 'yearly' && payoff && !isYearlyEndDateAnchored(start, payoff)) {
+    throw httpError(422, 'Yearly end date must match the payment date month and day.');
+  }
+  if (debtType !== 'other' && targetActive && !payoff) throw httpError(422, 'Target Payoff Date is required.');
 
   return values;
 }

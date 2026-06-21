@@ -2270,6 +2270,7 @@ function comparableDebtSource(item = {}) {
     payment_date: item.payment_date || item.paymentDate || null,
     start_date: item.start_date || item.startDate || '',
     payoff_target_date: item.payoff_target_date || item.payoffTargetDate || null,
+    target_payoff_active: Boolean(item.target_payoff_active ?? item.targetPayoffActive),
     priority_number: item.priority_number || item.priorityNumber || null,
     active: item.active !== false,
   });

@@ -38,6 +38,15 @@ const incomeFromAccountSelectionId = getFromAccountRefId;
 const incomeToAccountSelectionId = getToAccountRefId;
 const debtAccountSelectionId = getDebtRefId;
 
+const OTHER_DEBT_RECURRENCE_OPTIONS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'bi_weekly', label: 'Bi-Weekly' },
+  { value: 'first_and_fifteenth', label: 'First and Fifteenth' },
+  { value: 'one_time', label: 'One Time' },
+];
+
 const incomeTemplate = {
   label: '',
   accountBalanceId: '',
@@ -63,6 +72,7 @@ const debtTemplate = {
   paymentDate: '',
   startDate: '',
   payoffTargetDate: '',
+  targetPayoffActive: false,
   priorityNumber: '',
   recurrence: 'monthly',
   notes: '',
@@ -72,6 +82,32 @@ const debtTemplate = {
   promoStartDate: '',
   promoEndDate: '',
 };
+
+function isoDateParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+}
+
+function isLeapYear(year) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function yearlyOtherDebtEndDate(startDate, yearValue) {
+  const start = isoDateParts(startDate);
+  const year = Number(yearValue);
+  if (!start || !Number.isInteger(year)) return '';
+  const day = start.month === 2 && start.day === 29 && !isLeapYear(year) ? 28 : start.day;
+  return `${year}-${String(start.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function yearlyOtherDebtEndYear(form) {
+  return isoDateParts(form.payoffTargetDate)?.year || '';
+}
+
+function normalizeOtherDebtRecurrence(value) {
+  return OTHER_DEBT_RECURRENCE_OPTIONS.some((option) => option.value === value) ? value : 'monthly';
+}
 
 export default function ScenarioBuilder({ isActive = false }) {
   const [saved, setSaved] = useState([]);
@@ -382,7 +418,6 @@ export default function ScenarioBuilder({ isActive = false }) {
       setIncomeForm(incomeTemplate);
       setEditingIncomeOverrideIndex(null);
       setShowIncomeForm(false);
-      setScenario(null);
       await autoSaveScenarioProjection({
         incomeOverrides: nextIncomeOverrides,
         successMessage: editingIncomeOverrideIndex === null ? 'Income deviation added. Scenario regenerated and saved.' : 'Income deviation updated. Scenario regenerated and saved.',
@@ -408,6 +443,10 @@ export default function ScenarioBuilder({ isActive = false }) {
     if (!isOtherDebt(debtForm) && !debtForm.paymentDate) {
       setDebtDateError('Payment Date is required.');
       setStatus('Payment Date is required.');
+      return;
+    }
+    if (!isOtherDebt(debtForm) && debtForm.targetPayoffActive && !debtForm.payoffTargetDate) {
+      setStatus('Target Payoff Date is required.');
       return;
     }
     if (!isOtherDebt(debtForm) && !isValidApr(debtForm.aprPercentage)) {
@@ -438,7 +477,6 @@ export default function ScenarioBuilder({ isActive = false }) {
       setDebtDateError('');
       setEditingDebtOverrideIndex(null);
       setShowDebtForm(false);
-      setScenario(null);
       await autoSaveScenarioProjection({
         debtOverrides: nextDebtOverrides,
         successMessage: editingDebtOverrideIndex === null ? 'Debt deviation added. Scenario regenerated and saved.' : 'Debt deviation updated. Scenario regenerated and saved.',
@@ -466,6 +504,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       paymentDate: item.debt.payment_date || item.debt.paymentDate || '',
       startDate: item.debt.start_date || '',
       payoffTargetDate: item.debt.payoff_target_date || '',
+      targetPayoffActive: Boolean(item.debt.target_payoff_active),
       priorityNumber: item.debt.priority_number ?? '',
       recurrence: item.debt.recurrence || 'monthly',
       notes: item.debt.notes || '',
@@ -495,7 +534,6 @@ export default function ScenarioBuilder({ isActive = false }) {
       } else if (editingDebtOverrideIndex !== null && editingDebtOverrideIndex > index) {
         setEditingDebtOverrideIndex(editingDebtOverrideIndex - 1);
       }
-      setScenario(null);
       await autoSaveScenarioProjection({
         debtOverrides: nextDebtOverrides,
         successMessage: 'Debt deviation deleted. Scenario regenerated and saved.',
@@ -516,7 +554,6 @@ export default function ScenarioBuilder({ isActive = false }) {
     setLoading(true);
     try {
       setIncomeOverrides(nextIncomeOverrides);
-      setScenario(null);
       await autoSaveScenarioProjection({
         incomeOverrides: nextIncomeOverrides,
         successMessage: 'Income deviation amount updated. Scenario regenerated and saved.',
@@ -550,7 +587,6 @@ export default function ScenarioBuilder({ isActive = false }) {
     setLoading(true);
     try {
       setDebtOverrides(nextDebtOverrides);
-      setScenario(null);
       await autoSaveScenarioProjection({
         debtOverrides: nextDebtOverrides,
         successMessage: 'Debt deviation amount updated. Scenario regenerated and saved.',
@@ -570,7 +606,6 @@ export default function ScenarioBuilder({ isActive = false }) {
     setLoading(true);
     try {
       setIncomeOverrides(nextIncomeOverrides);
-      setScenario(null);
       await autoSaveScenarioProjection({
         incomeOverrides: nextIncomeOverrides,
         successMessage: 'Income deviation active state updated. Scenario regenerated and saved.',
@@ -590,7 +625,6 @@ export default function ScenarioBuilder({ isActive = false }) {
     setLoading(true);
     try {
       setDebtOverrides(nextDebtOverrides);
-      setScenario(null);
       await autoSaveScenarioProjection({
         debtOverrides: nextDebtOverrides,
         successMessage: 'Debt deviation active state updated. Scenario regenerated and saved.',
@@ -634,7 +668,6 @@ export default function ScenarioBuilder({ isActive = false }) {
       } else if (editingIncomeOverrideIndex !== null && editingIncomeOverrideIndex > index) {
         setEditingIncomeOverrideIndex(editingIncomeOverrideIndex - 1);
       }
-      setScenario(null);
       await autoSaveScenarioProjection({
         incomeOverrides: nextIncomeOverrides,
         successMessage: 'Income deviation deleted. Scenario regenerated and saved.',
@@ -1019,17 +1052,40 @@ export default function ScenarioBuilder({ isActive = false }) {
                     </select>
                   </label>
                   <label>Recurring
-                    <select value={debtForm.recurrence || 'monthly'} onChange={(e) => setDebtForm({ ...debtForm, recurrence: e.target.value, payoffTargetDate: e.target.value === 'one_time' ? '' : debtForm.payoffTargetDate })}>
-                      <option value="one_time">One-Time</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="bi_weekly">Bi-Weekly</option>
-                      <option value="first_and_fifteenth">First and Fifteenth</option>
+                    <select
+                      value={normalizeOtherDebtRecurrence(debtForm.recurrence || 'monthly')}
+                      onChange={(e) => {
+                        const recurrence = e.target.value;
+                        setDebtForm((current) => ({
+                          ...current,
+                          recurrence,
+                          payoffTargetDate: recurrence === 'one_time'
+                            ? ''
+                            : recurrence === 'yearly' && current.payoffTargetDate
+                              ? yearlyOtherDebtEndDate(current.startDate, yearlyOtherDebtEndYear(current))
+                              : current.payoffTargetDate,
+                        }));
+                      }}
+                    >
+                      {OTHER_DEBT_RECURRENCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </label>
                   <>
-                    <label>{isOneTimeOtherDebt(debtForm) ? 'Date' : 'Start Date'}<input type="date" value={debtForm.startDate} onChange={(e) => setDebtForm({ ...debtForm, startDate: e.target.value })} /></label>
-                    {!isOneTimeOtherDebt(debtForm) ? (
+                    <label>{isOneTimeOtherDebt(debtForm) ? 'Date' : isYearlyOtherDebt(debtForm) ? 'Payment Date' : 'Start Date'}<input type="date" value={debtForm.startDate} onChange={(e) => {
+                      const startDate = e.target.value;
+                      setDebtForm((current) => ({
+                        ...current,
+                        startDate,
+                        payoffTargetDate: isYearlyOtherDebt(current) && current.payoffTargetDate
+                          ? yearlyOtherDebtEndDate(startDate, yearlyOtherDebtEndYear(current))
+                          : current.payoffTargetDate,
+                      }));
+                    }} /></label>
+                    {isYearlyOtherDebt(debtForm) ? (
+                      <label>End Year<input type="number" min={isoDateParts(debtForm.startDate)?.year || 1900} step="1" value={yearlyOtherDebtEndYear(debtForm)} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value ? yearlyOtherDebtEndDate(debtForm.startDate, e.target.value) : '' })} /></label>
+                    ) : !isOneTimeOtherDebt(debtForm) ? (
                       <label>End Date<input type="date" value={debtForm.payoffTargetDate} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value })} /></label>
                     ) : null}
                   </>
@@ -1054,6 +1110,35 @@ export default function ScenarioBuilder({ isActive = false }) {
               <label className="checkbox-line">
                 <input type="checkbox" checked={debtForm.active} onChange={(e) => setDebtForm({ ...debtForm, active: e.target.checked })} /> Active
               </label>
+              {!isOtherDebt(debtForm) ? (
+                <div className="target-payoff-action">
+                  <label className="checkbox-line">
+                    <input
+                      type="checkbox"
+                      checked={debtForm.targetPayoffActive}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setDebtForm((current) => ({ ...current, targetPayoffActive: checked }));
+                      }}
+                    /> Target Payoff
+                  </label>
+                  {debtForm.targetPayoffActive ? (
+                    <input
+                      type="date"
+                      value={debtForm.payoffTargetDate}
+                      aria-label="Target Payoff Date"
+                      onInput={(e) => {
+                        const value = e.currentTarget.value;
+                        setDebtForm((current) => ({ ...current, payoffTargetDate: value, targetPayoffActive: Boolean(value) || current.targetPayoffActive }));
+                      }}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDebtForm((current) => ({ ...current, payoffTargetDate: value, targetPayoffActive: Boolean(value) || current.targetPayoffActive }));
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <p className="form-note">
               {isOtherDebt(debtForm)
@@ -1285,13 +1370,18 @@ function isOneTimeOtherDebt(formOrDebt) {
   return isOtherDebt(formOrDebt) && (formOrDebt?.recurrence || 'monthly') === 'one_time';
 }
 
+function isYearlyOtherDebt(formOrDebt) {
+  return isOtherDebt(formOrDebt) && (formOrDebt?.recurrence || 'monthly') === 'yearly';
+}
+
 function normalizeDebtFormForType(form) {
   if (!isOtherDebt(form)) return form;
   return {
     ...form,
     startingBalance: '',
     currentBalance: '',
-    recurrence: form.recurrence || 'monthly',
+    recurrence: normalizeOtherDebtRecurrence(form.recurrence || 'monthly'),
+    targetPayoffActive: false,
     priorityNumber: '',
     aprPercentage: '',
     promoAprPercentage: '',
@@ -1400,6 +1490,7 @@ function comparableDebt(item = {}) {
     payment_date: item.payment_date || null,
     start_date: item.start_date || '',
     payoff_target_date: item.payoff_target_date || null,
+    target_payoff_active: Boolean(item.target_payoff_active),
     priority_number: item.priority_number || null,
     active: item.active !== false,
     notes: item.notes || null,

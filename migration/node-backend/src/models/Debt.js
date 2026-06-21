@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const debtTypes = ['credit_card', 'personal_loan', 'vehicle_loan', 'student_loan', 'other'];
-const debtRecurrences = ['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly'];
+const debtRecurrences = ['one_time', 'weekly', 'bi_weekly', 'first_and_fifteenth', 'monthly', 'yearly'];
 
 const debtSchema = new mongoose.Schema(
   {
@@ -19,6 +19,7 @@ const debtSchema = new mongoose.Schema(
     payment_date: { type: String },
     start_date: { type: String, required: true },
     payoff_target_date: { type: String },
+    target_payoff_active: { type: Boolean, default: false },
     priority_number: { type: Number, min: 1 },
     active: { type: Boolean, default: true },
     notes: { type: String },

@@ -226,6 +226,72 @@ test('native baseline projection keeps same-name debts without ids in separate b
   assert.equal(row['Total Debt'], 1100);
 });
 
+test('native baseline projection applies yearly Other debt only on anchored yearly dates', () => {
+  const result = baseline.generateBaselineProjection(
+    [income({ amount: 1000, start_date: '2026-03-01' })],
+    [
+      debt({
+        id: 2,
+        name: 'Annual Fee',
+        debt_type: 'other',
+        current_balance: 0,
+        minimum_monthly_payment: 120,
+        actual_monthly_payment: 120,
+        recurrence: 'yearly',
+        start_date: '2026-03-15',
+        payoff_target_date: '2027-03-15',
+        priority_number: null,
+      }),
+    ],
+    [],
+    '2026-03-01',
+    14,
+    null,
+    [account({ amount: 0 })],
+    false,
+  );
+
+  const rowsByMonth = Object.fromEntries(result.generated_rows.map((row) => [row.month, row]));
+  assert.equal(rowsByMonth['2026-03-01'].Bills, 120);
+  assert.equal(rowsByMonth['2026-04-01'].Bills, 0);
+  assert.equal(rowsByMonth['2027-02-01'].Bills, 0);
+  assert.equal(rowsByMonth['2027-03-01'].Bills, 120);
+  assert.equal(rowsByMonth['2027-04-01'].Bills, 0);
+});
+
+test('native baseline projection applies leap-day yearly Other debt on Feb 28 in non-leap years', () => {
+  const result = baseline.generateBaselineProjection(
+    [income({ amount: 1000, start_date: '2028-02-01' })],
+    [
+      debt({
+        id: 2,
+        name: 'Leap Fee',
+        debt_type: 'other',
+        current_balance: 0,
+        minimum_monthly_payment: 75,
+        actual_monthly_payment: 75,
+        recurrence: 'yearly',
+        start_date: '2028-02-29',
+        payoff_target_date: '2032-02-29',
+        priority_number: null,
+      }),
+    ],
+    [],
+    '2028-02-01',
+    50,
+    null,
+    [account({ amount: 0 })],
+    false,
+  );
+
+  const rowsByMonth = Object.fromEntries(result.generated_rows.map((row) => [row.month, row]));
+  assert.equal(rowsByMonth['2028-02-01'].Bills, 75);
+  assert.equal(rowsByMonth['2029-02-01'].Bills, 75);
+  assert.equal(rowsByMonth['2030-02-01'].Bills, 75);
+  assert.equal(rowsByMonth['2031-02-01'].Bills, 75);
+  assert.equal(rowsByMonth['2032-02-01'].Bills, 75);
+});
+
 test('native baseline projection matches FastAPI for account transfers and owner cash rows', () => {
   const cases = [
     {
@@ -354,6 +420,7 @@ test('baseline engine adapter normalizes Mongo documents into calculation payloa
       payment_date: null,
       start_date: '2026-01-01',
       payoff_target_date: null,
+      target_payoff_active: false,
       priority_number: null,
       active: true,
       notes: null,
@@ -376,6 +443,153 @@ test('baseline engine adapter normalizes Mongo documents into calculation payloa
       end_date: null,
       notes: null,
     },
+  );
+});
+
+test('target payoff active pays normal payments until target month then applies lump sum', () => {
+  const result = nodeResult({
+    start_month: '2026-01-01',
+    months: 4,
+    income_sources: [income({ amount: 2000 })],
+    debts: [
+      debt({
+        current_balance: 1000,
+        minimum_monthly_payment: 100,
+        planned_extra_payment: 0,
+        payoff_target_date: '2026-04-01',
+        target_payoff_active: true,
+      }),
+    ],
+    interest_rates: [rate({ apr_percentage: 0 })],
+    account_balances: [account({ amount: 0 })],
+  });
+
+  assert.equal(result.generated_rows[0]['Card Payment'], 100);
+  assert.equal(result.generated_rows[0].Card, 900);
+  assert.equal(result.generated_rows[1]['Card Payment'], 100);
+  assert.equal(result.generated_rows[1].Card, 800);
+  assert.equal(result.generated_rows[2]['Card Payment'], 100);
+  assert.equal(result.generated_rows[2].Card, 700);
+  assert.equal(result.generated_rows[3]['Card Payment'], 700);
+  assert.equal(result.generated_rows[3].Card, 0);
+  assert.equal(result.generated_rows[3]['Monthly Surplus'], 1300);
+  assert.equal(result.generated_rows[3]['Cash Balance'], 7000);
+  assert.equal(result.account_projection_rows[0].accounts[0].debt_payments, 100);
+  assert.equal(result.account_projection_rows[1].accounts[0].debt_payments, 100);
+  assert.equal(result.account_projection_rows[2].accounts[0].debt_payments, 100);
+  assert.equal(result.account_projection_rows[3].accounts[0].debt_payments, 700);
+  assert.equal(result.account_projection_rows[3].accounts[0].cash_balance, 7000);
+  assert.deepEqual(result.generated_rows[3]['Debts Paid Off'], ['Card']);
+  assert.equal(result.summary.projected_payoff_date, '2026-04-01');
+  assert.equal(result.summary.months_to_debt_free, 4);
+});
+
+test('target payoff does not redistribute screenshot-scale baseline payments before target month', () => {
+  const result = nodeResult({
+    start_month: '2026-06-01',
+    months: 8,
+    income_sources: [income({ start_date: '2026-06-01', amount: 12000 })],
+    debts: [
+      debt({
+        id: 1,
+        name: 'Travel Rewards Card',
+        start_date: '2026-01-01',
+        current_balance: 15000,
+        minimum_monthly_payment: 125,
+        planned_extra_payment: 175,
+        payoff_target_date: '2027-01-15',
+        target_payoff_active: true,
+      }),
+    ],
+    interest_rates: [rate({ debt_id: 1, start_date: '2026-01-01', apr_percentage: 12 })],
+    account_balances: [account({ amount: 0, date: '2026-06-01' })],
+  });
+
+  for (const row of result.generated_rows.slice(0, 7)) {
+    assert.equal(row['Travel Rewards Card Payment'], 300);
+    assert.notEqual(row['Travel Rewards Card Payment'], 1960.36);
+  }
+  assert.equal(result.generated_rows[7]['Travel Rewards Card Payment'] > 300, true);
+  assert.equal(result.generated_rows[7]['Travel Rewards Card'], 0);
+  assert.deepEqual(result.generated_rows[7]['Debts Paid Off'], ['Travel Rewards Card']);
+});
+
+test('target payoff allows cash balance to go negative for target month lump sum', () => {
+  const result = nodeResult({
+    start_month: '2026-01-01',
+    months: 4,
+    income_sources: [income({ amount: 0 })],
+    debts: [
+      debt({
+        current_balance: 1000,
+        minimum_monthly_payment: 100,
+        planned_extra_payment: 0,
+        payoff_target_date: '2026-04-01',
+        target_payoff_active: true,
+      }),
+    ],
+    interest_rates: [rate({ apr_percentage: 0 })],
+    account_balances: [account({ amount: 0 })],
+  });
+
+  assert.equal(result.generated_rows[0]['Cash Balance'], -100);
+  assert.equal(result.generated_rows[1]['Cash Balance'], -200);
+  assert.equal(result.generated_rows[2]['Cash Balance'], -300);
+  assert.equal(result.generated_rows[3]['Card Payment'], 700);
+  assert.equal(result.generated_rows[3].Card, 0);
+  assert.equal(result.generated_rows[3]['Monthly Surplus'], -700);
+  assert.equal(result.generated_rows[3]['Cash Balance'], -1000);
+  assert.equal(result.account_projection_rows[3].accounts[0].debt_payments, 700);
+  assert.equal(result.account_projection_rows[3].accounts[0].cash_balance, -1000);
+  assert.deepEqual(result.generated_rows[3]['Debts Paid Off'], ['Card']);
+});
+
+test('target payoff does not create a lump sum when natural payoff occurs first', () => {
+  const result = nodeResult({
+    start_month: '2026-01-01',
+    months: 6,
+    income_sources: [income({ amount: 2000 })],
+    debts: [
+      debt({
+        current_balance: 200,
+        minimum_monthly_payment: 100,
+        planned_extra_payment: 0,
+        payoff_target_date: '2026-06-01',
+        target_payoff_active: true,
+      }),
+    ],
+    interest_rates: [rate({ apr_percentage: 0 })],
+    account_balances: [account({ amount: 0 })],
+  });
+
+  assert.equal(result.generated_rows[0]['Card Payment'], 100);
+  assert.equal(result.generated_rows[1]['Card Payment'], 100);
+  assert.equal(result.generated_rows[1].Card, 0);
+  assert.deepEqual(result.generated_rows[1]['Debts Paid Off'], ['Card']);
+  assert.equal(result.generated_rows[5]['Card Payment'], 0);
+  assert.equal(result.generated_rows[5].Card, 0);
+  assert.equal(result.summary.projected_payoff_date, '2026-02-01');
+  assert.equal(result.summary.months_to_debt_free, 2);
+});
+
+test('target payoff date must be after the projection start month', () => {
+  assert.throws(
+    () => nodeResult({
+      start_month: '2026-01-01',
+      months: 4,
+      income_sources: [income({ amount: 2000 })],
+      debts: [
+        debt({
+          current_balance: 1000,
+          minimum_monthly_payment: 100,
+          payoff_target_date: '2026-01-01',
+          target_payoff_active: true,
+        }),
+      ],
+      interest_rates: [rate({ apr_percentage: 0 })],
+      account_balances: [account({ amount: 0 })],
+    }),
+    /Target Payoff Date must be after the projection start month/,
   );
 });
 

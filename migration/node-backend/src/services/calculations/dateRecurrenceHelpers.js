@@ -59,6 +59,28 @@ function lastOfMonth(value) {
   return new Date(nextMonth.getTime() - MS_PER_DAY);
 }
 
+function isLeapYear(year) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function lastDayOfMonth(year, monthIndex) {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+function yearlyOccurrenceDate(anchorDate, year) {
+  const anchor = parseDate(anchorDate);
+  const monthIndex = anchor.getUTCMonth();
+  const day = anchor.getUTCDate();
+  const normalizedDay = Math.min(day, lastDayOfMonth(year, monthIndex));
+  return new Date(Date.UTC(year, monthIndex, normalizedDay));
+}
+
+function isYearlyEndDateAnchored(startDate, endDate) {
+  if (!startDate || !endDate) return true;
+  const end = parseDate(endDate);
+  return formatDate(yearlyOccurrenceDate(startDate, end.getUTCFullYear())) === formatDate(end);
+}
+
 function inclusiveMonthCount(start, end) {
   const startMonth = firstOfMonth(start);
   const endMonth = firstOfMonth(end);
@@ -149,6 +171,11 @@ function occurrenceDatesForMonth(frequency, startDate, endDate, month, options =
     return [rangeStart];
   }
 
+  if (normalized === 'yearly') {
+    const candidate = yearlyOccurrenceDate(start, monthStart.getUTCFullYear());
+    return rangeStart <= candidate && candidate <= rangeEnd ? [candidate] : [];
+  }
+
   if (normalized === 'weekly' || normalized === 'bi_weekly') {
     const intervalDays = normalized === 'weekly' ? 7 : 14;
     const daysAfterAnchor = Math.max(daysBetween(start, rangeStart), 0);
@@ -202,6 +229,8 @@ module.exports = {
   firstOfMonth,
   addMonths,
   lastOfMonth,
+  yearlyOccurrenceDate,
+  isYearlyEndDateAnchored,
   inclusiveMonthCount,
   monthRange,
   normalizedFrequency,

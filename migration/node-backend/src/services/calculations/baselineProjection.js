@@ -15,7 +15,10 @@ const {
   monthlyIncomeAmount,
   monthlyInterest,
   scheduledActualPayment,
+  targetPayoffActive,
+  targetPayoffMonth,
   toPlainObject,
+  validateTargetPayoffDebt,
 } = require('./primitives');
 
 function roundCurrency(value) {
@@ -74,6 +77,14 @@ function projectionLabelFor(columnLabels, debt, index) {
   return debt.name || 'Debt';
 }
 
+function shouldApplyTargetPayoff(debt, month, endingBalance) {
+  if (!targetPayoffActive(debt) || endingBalance <= 0) {
+    return false;
+  }
+  const payoffMonth = targetPayoffMonth(debt);
+  return payoffMonth !== null && payoffMonth.getTime() === firstOfMonth(month).getTime();
+}
+
 function generateBaselineProjection(
   incomeSources,
   debts,
@@ -100,6 +111,7 @@ function generateBaselineProjection(
   const balances = {};
   for (const debt of debtData) {
     balances[debt._projection_identity] = Number(debt.current_balance);
+    validateTargetPayoffDebt(debt, startMonth);
   }
 
   let cashBalance = startingCashBalance(accountData, startMonth);
@@ -150,9 +162,17 @@ function generateBaselineProjection(
       const interest = monthlyInterest(balance, apr);
       const scheduledMinimum = Number(debt.minimum_monthly_payment);
       const scheduledActual = scheduledActualPayment(debt, month);
-      const payment = bill ? scheduledActual : Math.min(balance + interest, scheduledActual);
-      const principalPaid = Math.max(payment - interest, 0);
-      const endingBalance = bill ? 0.0 : Math.max(balance + interest - payment, 0);
+      const regularPayment = bill ? scheduledActual : Math.min(balance + interest, scheduledActual);
+      let payment = regularPayment;
+      let principalPaid = Math.max(regularPayment - interest, 0);
+      let endingBalance = bill ? 0.0 : Math.max(balance + interest - regularPayment, 0);
+
+      if (!bill && shouldApplyTargetPayoff(debt, month, endingBalance)) {
+        const lumpSumPayment = endingBalance;
+        payment += lumpSumPayment;
+        principalPaid += lumpSumPayment;
+        endingBalance = 0.0;
+      }
 
       row[name] = roundCurrency(endingBalance);
       row[`${name} Payment`] = bill ? 0.0 : roundCurrency(payment);

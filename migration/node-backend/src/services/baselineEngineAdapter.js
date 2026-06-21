@@ -76,6 +76,7 @@ function normalizedDebt(rawDebt) {
     payment_date: rawDebt.payment_date ?? null,
     start_date: rawDebt.start_date,
     payoff_target_date: rawDebt.payoff_target_date ?? null,
+    target_payoff_active: rawDebt.target_payoff_active ?? false,
     priority_number: rawDebt.priority_number ?? null,
     active: rawDebt.active ?? true,
     notes: rawDebt.notes ?? null,

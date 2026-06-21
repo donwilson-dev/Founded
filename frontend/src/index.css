@@ -776,6 +776,23 @@ textarea {
   min-height: 154px;
 }
 
+.target-payoff-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.target-payoff-action input[type='date'] {
+  width: 178px;
+  min-width: 178px;
+  min-height: 38px;
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .form-heading {
   grid-column: 1 / -1;
   display: flex;

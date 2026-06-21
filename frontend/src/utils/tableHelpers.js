@@ -116,7 +116,7 @@ export function scenarioComparisonColumns(rows = []) {
     ...pairedMetricColumns(rows, 'Interest'),
     ...pairedMetricColumns(rows, 'Principal'),
     ...pairedMetricColumns(rows, 'Total Debt Balance'),
-    'Debts Paid Off',
+    ...pairedMetricColumns(rows, 'Debts Paid Off'),
     ...pairedMetricColumns(rows, 'Monthly Surplus'),
     ...pairedMetricColumns(rows, 'Cash Balance'),
   ];

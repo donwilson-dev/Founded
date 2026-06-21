@@ -52,6 +52,15 @@ const incomeAccountSelectionId = getAccountRefId;
 const incomeFromAccountSelectionId = getFromAccountRefId;
 const incomeToAccountSelectionId = getToAccountRefId;
 
+const OTHER_DEBT_RECURRENCE_OPTIONS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'bi_weekly', label: 'Bi-Weekly' },
+  { value: 'first_and_fifteenth', label: 'First and Fifteenth' },
+  { value: 'one_time', label: 'One Time' },
+];
+
 const initialIncome = {
   label: '',
   accountBalanceId: '',
@@ -88,6 +97,7 @@ const initialDebt = {
   paymentDate: '',
   startDate: '',
   payoffTargetDate: '',
+  targetPayoffActive: false,
   priorityNumber: '',
   recurrence: 'monthly',
   notes: '',
@@ -106,6 +116,32 @@ function defaultDebtStartDate() {
 function todayDate() {
   const today = new Date();
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function isoDateParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+}
+
+function isLeapYear(year) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function yearlyOtherDebtEndDate(startDate, yearValue) {
+  const start = isoDateParts(startDate);
+  const year = Number(yearValue);
+  if (!start || !Number.isInteger(year)) return '';
+  const day = start.month === 2 && start.day === 29 && !isLeapYear(year) ? 28 : start.day;
+  return `${year}-${String(start.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function yearlyOtherDebtEndYear(form) {
+  return isoDateParts(form.payoffTargetDate)?.year || '';
+}
+
+function normalizeOtherDebtRecurrence(value) {
+  return OTHER_DEBT_RECURRENCE_OPTIONS.some((option) => option.value === value) ? value : 'monthly';
 }
 
 function currentMonthStart() {
@@ -507,6 +543,7 @@ export default function BaselineBuilder({ isActive = false }) {
       paymentDate: debt.payment_date || debt.paymentDate || '',
       startDate: debt.start_date || '',
       payoffTargetDate: debt.payoff_target_date || '',
+      targetPayoffActive: Boolean(debt.target_payoff_active),
       priorityNumber: debt.priority_number ?? '',
       recurrence: debt.recurrence || 'monthly',
       notes: debt.notes || '',
@@ -731,6 +768,10 @@ export default function BaselineBuilder({ isActive = false }) {
       setStatus('Payment Date is required.');
       return;
     }
+    if (!isOtherDebt(debtForm) && debtForm.targetPayoffActive && !debtForm.payoffTargetDate) {
+      setStatus('Target Payoff Date is required.');
+      return;
+    }
     if (debtForm.debtType !== 'other' && debtForm.promoAprPercentage !== '' && (!debtForm.promoStartDate || !debtForm.promoEndDate)) {
       setStatus('Promo APR requires both Promo Start Date and Promo End Date.');
       return;
@@ -805,6 +846,7 @@ export default function BaselineBuilder({ isActive = false }) {
         paymentDate: debt.payment_date || debt.paymentDate || '',
         startDate: debt.start_date || '',
         payoffTargetDate: debt.payoff_target_date || '',
+        targetPayoffActive: Boolean(debt.target_payoff_active),
         priorityNumber: debt.priority_number ?? '',
         recurrence: debt.recurrence || 'monthly',
         notes: debt.notes || '',
@@ -846,6 +888,7 @@ export default function BaselineBuilder({ isActive = false }) {
         paymentDate: debt.payment_date || debt.paymentDate || '',
         startDate: debt.start_date || '',
         payoffTargetDate: debt.payoff_target_date || '',
+        targetPayoffActive: Boolean(debt.target_payoff_active),
         priorityNumber: debt.priority_number ?? '',
         recurrence: debt.recurrence || 'monthly',
         notes: debt.notes || '',
@@ -1355,17 +1398,40 @@ export default function BaselineBuilder({ isActive = false }) {
                     </select>
                   </label>
                   <label>Recurring
-                    <select value={debtForm.recurrence || 'monthly'} onChange={(e) => setDebtForm({ ...debtForm, recurrence: e.target.value, payoffTargetDate: e.target.value === 'one_time' ? '' : debtForm.payoffTargetDate })}>
-                      <option value="one_time">One-Time</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="bi_weekly">Bi-Weekly</option>
-                      <option value="first_and_fifteenth">First and Fifteenth</option>
+                    <select
+                      value={normalizeOtherDebtRecurrence(debtForm.recurrence || 'monthly')}
+                      onChange={(e) => {
+                        const recurrence = e.target.value;
+                        setDebtForm((current) => ({
+                          ...current,
+                          recurrence,
+                          payoffTargetDate: recurrence === 'one_time'
+                            ? ''
+                            : recurrence === 'yearly' && current.payoffTargetDate
+                              ? yearlyOtherDebtEndDate(current.startDate, yearlyOtherDebtEndYear(current))
+                              : current.payoffTargetDate,
+                        }));
+                      }}
+                    >
+                      {OTHER_DEBT_RECURRENCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </label>
                   <>
-                    <label>{isOneTimeOtherDebt(debtForm) ? 'Date' : 'Start Date'}<input type="date" value={debtForm.startDate} onChange={(e) => setDebtForm({ ...debtForm, startDate: e.target.value })} /></label>
-                    {!isOneTimeOtherDebt(debtForm) ? (
+                    <label>{isOneTimeOtherDebt(debtForm) ? 'Date' : isYearlyOtherDebt(debtForm) ? 'Payment Date' : 'Start Date'}<input type="date" value={debtForm.startDate} onChange={(e) => {
+                      const startDate = e.target.value;
+                      setDebtForm((current) => ({
+                        ...current,
+                        startDate,
+                        payoffTargetDate: isYearlyOtherDebt(current) && current.payoffTargetDate
+                          ? yearlyOtherDebtEndDate(startDate, yearlyOtherDebtEndYear(current))
+                          : current.payoffTargetDate,
+                      }));
+                    }} /></label>
+                    {isYearlyOtherDebt(debtForm) ? (
+                      <label>End Year<input type="number" min={isoDateParts(debtForm.startDate)?.year || 1900} step="1" value={yearlyOtherDebtEndYear(debtForm)} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value ? yearlyOtherDebtEndDate(debtForm.startDate, e.target.value) : '' })} /></label>
+                    ) : !isOneTimeOtherDebt(debtForm) ? (
                       <label>End Date<input type="date" value={debtForm.payoffTargetDate} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value })} /></label>
                     ) : null}
                   </>
@@ -1390,6 +1456,35 @@ export default function BaselineBuilder({ isActive = false }) {
               <label className="checkbox-line">
                 <input type="checkbox" checked={debtForm.active} onChange={(e) => setDebtForm({ ...debtForm, active: e.target.checked })} /> Active
               </label>
+              {!isOtherDebt(debtForm) ? (
+                <div className="target-payoff-action">
+                  <label className="checkbox-line">
+                    <input
+                      type="checkbox"
+                      checked={debtForm.targetPayoffActive}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setDebtForm((current) => ({ ...current, targetPayoffActive: checked }));
+                      }}
+                    /> Target Payoff
+                  </label>
+                  {debtForm.targetPayoffActive ? (
+                    <input
+                      type="date"
+                      value={debtForm.payoffTargetDate}
+                      aria-label="Target Payoff Date"
+                      onInput={(e) => {
+                        const value = e.currentTarget.value;
+                        setDebtForm((current) => ({ ...current, payoffTargetDate: value, targetPayoffActive: Boolean(value) || current.targetPayoffActive }));
+                      }}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDebtForm((current) => ({ ...current, payoffTargetDate: value, targetPayoffActive: Boolean(value) || current.targetPayoffActive }));
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             {editingDebt ? (
               <InterestSchedule
@@ -1635,6 +1730,10 @@ function isOneTimeOtherDebt(formOrDebt) {
   return isOtherDebt(formOrDebt) && (formOrDebt?.recurrence || 'monthly') === 'one_time';
 }
 
+function isYearlyOtherDebt(formOrDebt) {
+  return isOtherDebt(formOrDebt) && (formOrDebt?.recurrence || 'monthly') === 'yearly';
+}
+
 async function fetchDebtWithRates(debtId, fallbackDebt = {}) {
   const [debt, rates] = await Promise.all([
     foundedApi.getDebt(debtId),
@@ -1652,7 +1751,8 @@ function normalizeDebtFormForType(form) {
     ...form,
     startingBalance: '',
     currentBalance: '',
-    recurrence: form.recurrence || 'monthly',
+    recurrence: normalizeOtherDebtRecurrence(form.recurrence || 'monthly'),
+    targetPayoffActive: false,
     priorityNumber: '',
     aprPercentage: '',
     promoAprPercentage: '',

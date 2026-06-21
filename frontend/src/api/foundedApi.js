@@ -156,6 +156,10 @@ export function toDebtPayload(form, defaults = {}) {
   const isOtherDebt = form.debtType === 'other';
   const currentBalance = isOtherDebt ? 0 : Number(form.currentBalance || 0);
   const recurrence = isOtherDebt ? (form.recurrence || 'monthly') : null;
+  const targetPayoffActive = !isOtherDebt && Boolean(form.targetPayoffActive);
+  const payoffTargetDate = isOtherDebt
+    ? (recurrence === 'one_time' ? null : form.payoffTargetDate || null)
+    : form.payoffTargetDate || null;
   const rawMinimumPayment = Number(form.minimumMonthlyPayment || 0);
   const rawActualPayment = form.actualPayment === '' || form.actualPayment === undefined
     ? rawMinimumPayment + Number(form.plannedExtraPayment || 0)
@@ -173,7 +177,8 @@ export function toDebtPayload(form, defaults = {}) {
     payment_due_day: null,
     payment_date: isOtherDebt ? null : form.paymentDate || null,
     start_date: form.startDate || defaults.startDate,
-    payoff_target_date: isOtherDebt && recurrence === 'one_time' ? null : form.payoffTargetDate || null,
+    payoff_target_date: payoffTargetDate,
+    target_payoff_active: targetPayoffActive,
     priority_number: isOtherDebt ? null : form.priorityNumber ? Number(form.priorityNumber) : null,
     active: Boolean(form.active),
     notes: form.notes || null,

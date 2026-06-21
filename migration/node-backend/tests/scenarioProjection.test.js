@@ -614,6 +614,229 @@ test('native scenario projection matches FastAPI account transfers and other-deb
   ]);
 });
 
+test('active scenario target payoff override applies lump sum independently in target month', () => {
+  const caseData = baseCase({
+    baseline: {
+      months: 4,
+      income_sources: [income({ amount: 2000 })],
+      debts: [debt({ current_balance: 1000, minimum_monthly_payment: 100 })],
+      interest_rates: [rate({ apr_percentage: 0 })],
+      account_balances: [account({ amount: 0 })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: 1,
+          current_balance: 1000,
+          minimum_monthly_payment: 100,
+          planned_extra_payment: 0,
+          payoff_target_date: '2026-04-01',
+          target_payoff_active: true,
+        }),
+      ],
+      interest_rate_overrides: [rate({ debt_id: 1, apr_percentage: 0 })],
+    },
+  );
+
+  assert.equal(result.generated_rows[0]['Card Payment'], 100);
+  assert.equal(result.generated_rows[0]['Card Payment+'], 100);
+  assert.equal(result.generated_rows[1]['Card Payment+'], 100);
+  assert.equal(result.generated_rows[2]['Card Payment+'], 100);
+  assert.equal(result.generated_rows[3]['Card Payment'], 100);
+  assert.equal(result.generated_rows[3]['Card'], 600);
+  assert.equal(result.generated_rows[3]['Card Payment+'], 700);
+  assert.equal(result.generated_rows[3]['Card+'], 0);
+  assert.deepEqual(result.generated_rows[3]['Debts Paid Off+'], ['Card']);
+  assert.equal(result.summary.projected_payoff_date, '2026-04-01');
+});
+
+test('active scenario target payoff accepts a future date within the target month', () => {
+  const caseData = baseCase({
+    baseline: {
+      start_month: '2026-06-01',
+      months: 4,
+      income_sources: [income({ start_date: '2026-06-01', amount: 2000 })],
+      debts: [
+        debt({
+          start_date: '2026-06-01',
+          current_balance: 4300,
+          minimum_monthly_payment: 125,
+          planned_extra_payment: 475,
+        }),
+      ],
+      interest_rates: [rate({ start_date: '2026-06-01', apr_percentage: 0 })],
+      account_balances: [account({ amount: 0, date: '2026-06-01' })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: 1,
+          start_date: '2026-06-01',
+          current_balance: 4300,
+          minimum_monthly_payment: 125,
+          planned_extra_payment: 475,
+          payoff_target_date: '2026-08-12',
+          target_payoff_active: true,
+        }),
+      ],
+      interest_rate_overrides: [rate({ debt_id: 1, start_date: '2026-06-01', apr_percentage: 0 })],
+    },
+  );
+
+  assert.equal(result.generated_rows[0]['Card Payment+'], 600);
+  assert.equal(result.generated_rows[1]['Card Payment+'], 600);
+  assert.equal(result.generated_rows[2]['Card Payment+'], 3100);
+  assert.equal(result.generated_rows[2]['Card+'], 0);
+  assert.equal(result.generated_rows[2]['Monthly Surplus+'], -1100);
+  assert.equal(result.generated_rows[2]['Cash Balance+'], 1700);
+  assert.equal(result.scenario_account_projection_rows[2].accounts[0].debt_payments, 3100);
+  assert.equal(result.scenario_account_projection_rows[2].accounts[0].cash_balance, 1700);
+  assert.deepEqual(result.generated_rows[2]['Debts Paid Off+'], ['Card']);
+  assert.equal(result.summary.projected_payoff_date, '2026-08-01');
+});
+
+test('active scenario target payoff does not redistribute screenshot-scale payments before target month', () => {
+  const caseData = baseCase({
+    baseline: {
+      start_month: '2026-06-01',
+      months: 4,
+      income_sources: [income({ start_date: '2026-06-01', amount: 12000 })],
+      debts: [
+        debt({
+          id: 1,
+          name: 'Travel Rewards Card',
+          start_date: '2026-01-01',
+          current_balance: 15000,
+          minimum_monthly_payment: 125,
+          planned_extra_payment: 175,
+        }),
+      ],
+      interest_rates: [rate({ debt_id: 1, start_date: '2026-01-01', apr_percentage: 12 })],
+      account_balances: [account({ amount: 0, date: '2026-06-01' })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: 1,
+          name: 'Travel Rewards Card2',
+          start_date: '2026-01-01',
+          current_balance: 14300,
+          minimum_monthly_payment: 125,
+          planned_extra_payment: 475,
+          payoff_target_date: '2026-08-12',
+          target_payoff_active: true,
+        }),
+      ],
+      interest_rate_overrides: [rate({ debt_id: 1, start_date: '2026-01-01', apr_percentage: 12 })],
+    },
+  );
+
+  assert.equal(result.generated_rows[0]['Travel Rewards Card2 Payment+'], 600);
+  assert.notEqual(result.generated_rows[0]['Travel Rewards Card2 Payment+'], 4862);
+  assert.equal(result.generated_rows[1]['Travel Rewards Card2 Payment+'], 600);
+  assert.notEqual(result.generated_rows[1]['Travel Rewards Card2 Payment+'], 4862);
+  assert.equal(result.generated_rows[2]['Travel Rewards Card2 Payment+'] > 600, true);
+  assert.equal(result.generated_rows[2]['Travel Rewards Card2+'], 0);
+  assert.deepEqual(result.generated_rows[2]['Debts Paid Off+'], ['Travel Rewards Card2']);
+});
+
+test('inactive scenario target payoff override preserves baseline debt metrics', () => {
+  const caseData = baseCase({
+    baseline: {
+      months: 4,
+      income_sources: [income({ amount: 2000 })],
+      debts: [debt({ current_balance: 1000, minimum_monthly_payment: 100 })],
+      interest_rates: [rate({ apr_percentage: 0 })],
+      account_balances: [account({ amount: 0 })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: 1,
+          current_balance: 1000,
+          minimum_monthly_payment: 100,
+          payoff_target_date: '2026-04-01',
+          target_payoff_active: true,
+          active: false,
+        }),
+      ],
+    },
+  );
+
+  for (const row of result.generated_rows) {
+    assert.equal(row['Card+'], row.Card);
+    assert.equal(row['Card Payment+'], row['Card Payment']);
+    assert.equal(row['Total Debt+'], row['Total Debt']);
+    assert.equal(row['Total Debt Payments+'], row['Total Debt Payments']);
+  }
+});
+
+test('active scenario Other debt override applies yearly recurrence on anchored dates', () => {
+  const caseData = baseCase({
+    baseline: {
+      start_month: '2026-03-01',
+      months: 14,
+      income_sources: [income({ amount: 1000, start_date: '2026-03-01' })],
+      debts: [],
+      interest_rates: [],
+      account_balances: [account({ amount: 0 })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: null,
+          name: 'Annual Fee',
+          debt_type: 'other',
+          current_balance: 0,
+          minimum_monthly_payment: 120,
+          actual_monthly_payment: 120,
+          recurrence: 'yearly',
+          start_date: '2026-03-15',
+          payoff_target_date: '2027-03-15',
+          priority_number: null,
+        }),
+      ],
+    },
+  );
+
+  const rowsByMonth = Object.fromEntries(result.generated_rows.map((row) => [row.month, row]));
+  assert.equal(rowsByMonth['2026-03-01']['Bills+'], 120);
+  assert.equal(rowsByMonth['2026-04-01']['Bills+'], 0);
+  assert.equal(rowsByMonth['2027-02-01']['Bills+'], 0);
+  assert.equal(rowsByMonth['2027-03-01']['Bills+'], 120);
+  assert.equal(rowsByMonth['2027-04-01']['Bills+'], 0);
+});
+
 test('native scenario response and save payload match FastAPI wrapper compatibility', () => {
   const caseData = baseCase({
     baseline: { title: 'Actual' },
