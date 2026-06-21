@@ -111,6 +111,42 @@ function rateDebtReferenceKeys(rate = {}) {
     .map(String);
 }
 
+function baselineDebtKeySet(debts = []) {
+  return new Set((debts || []).map((debt, index) => {
+    let key = identityKey(debt);
+    if (key === null) {
+      key = JSON.stringify(['position', index]);
+    }
+    return key;
+  }));
+}
+
+function matchingBaselineDebtKey(debt, baselineKeys) {
+  const key = identityKey(debt);
+  return key !== null && baselineKeys.has(key);
+}
+
+function scheduledDebtPayment(debt = {}) {
+  const minimum = Number(debt.minimum_monthly_payment || 0);
+  const actual = debt.actual_monthly_payment === null || debt.actual_monthly_payment === undefined
+    ? minimum + Number(debt.planned_extra_payment || 0)
+    : Number(debt.actual_monthly_payment || 0);
+  return Number.isFinite(actual) ? actual : 0;
+}
+
+function isNonImpactingDebtOverride(debt, baselineKeys) {
+  if (!debt || debt.active === false) return false;
+  if (debt.target_payoff_active) return false;
+  if (Number(debt.current_balance || 0) > 0) return false;
+
+  const matchesBaselineDebt = matchingBaselineDebtKey(debt, baselineKeys);
+  if (!matchesBaselineDebt) {
+    return true;
+  }
+
+  return scheduledDebtPayment(debt) <= 0;
+}
+
 function roundCurrency(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
@@ -237,9 +273,20 @@ function generateScenarioProjection(
 ) {
   const debtOverrideItems = debtOverrides || [];
   const incomeOverrideItems = incomeOverrides || [];
+  const baselineDebtKeys = baselineDebtKeySet(baselineAssumptions.debts || []);
   const activeIncomeOverrides = incomeOverrideItems.filter((item) => item?.active !== false);
   const hasInactiveIncomeInputs = incomeOverrideItems.some((item) => item?.active === false);
-  const activeDebtOverrides = debtOverrideItems.filter((item) => item?.active !== false);
+  const ignoredDebtOverrideIds = new Set();
+  let hasIgnoredActiveDebtOverrides = false;
+  const activeDebtOverrides = debtOverrideItems.filter((item) => {
+    if (item?.active === false) return false;
+    if (isNonImpactingDebtOverride(item, baselineDebtKeys)) {
+      hasIgnoredActiveDebtOverrides = true;
+      debtReferenceKeys(item).forEach((id) => ignoredDebtOverrideIds.add(id));
+      return false;
+    }
+    return true;
+  });
   const inactiveDebtIds = new Set(
     debtOverrideItems
       .filter((item) => item?.active === false)
@@ -250,10 +297,12 @@ function generateScenarioProjection(
   const activeInterestRateOverrides = (interestRateOverrides || []).filter((rate) => {
     if (rate?.active === false) return false;
     const rateDebtIds = rateDebtReferenceKeys(rate);
+    if (rateDebtIds.some((id) => ignoredDebtOverrideIds.has(id))) return false;
     return !rateDebtIds.some((id) => inactiveDebtIds.has(id));
   });
   const hasActiveIncomeChanges = activeIncomeOverrides.length > 0;
   const hasActiveDebtChanges = activeDebtOverrides.length > 0 || activeInterestRateOverrides.length > 0;
+  const shouldEmitComparisonFields = hasActiveIncomeChanges || hasActiveDebtChanges || !hasIgnoredActiveDebtOverrides;
   const hasInactiveScenarioInputs = hasInactiveIncomeInputs || hasInactiveDebtInputs;
   const { items: income } = mergeAssumptionCollection(
     baselineAssumptions.income_sources || [],
@@ -330,7 +379,10 @@ function generateScenarioProjection(
   for (const baselineRow of baselineRows || []) {
     const rowMonth = firstOfMonth(baselineRow.month);
     const merged = { ...baselineRow };
-    if (rowMonth >= start && (end === null || rowMonth <= end) && scenarioByMonth.has(baselineRow.month)) {
+    if (shouldEmitComparisonFields
+      && rowMonth >= start
+      && (end === null || rowMonth <= end)
+      && scenarioByMonth.has(baselineRow.month)) {
       const scenarioRow = scenarioByMonth.get(baselineRow.month);
       for (const [key, value] of Object.entries(scenarioRow)) {
         if (key === 'month' || key === 'Debts Paid Off') {

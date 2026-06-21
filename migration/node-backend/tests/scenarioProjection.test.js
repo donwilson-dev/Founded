@@ -253,6 +253,17 @@ function baseCase(overrides = {}) {
   };
 }
 
+function assertNoScenarioDeltas(result, debtName = null) {
+  for (const row of result.generated_rows) {
+    const comparisonKeys = Object.keys(row).filter((key) => key.endsWith('+') || key.endsWith(' Difference'));
+    assert.deepEqual(comparisonKeys, [], `zero-impact scenario should not emit comparison fields for ${row.month}`);
+    if (debtName) {
+      assert.equal(Object.prototype.hasOwnProperty.call(row, `${debtName}+`), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(row, `${debtName} Payment+`), false);
+    }
+  }
+}
+
 test('native scenario projection matches FastAPI for no deviations and default timeline', () => {
   assertParity([
     {
@@ -795,13 +806,158 @@ test('inactive scenario target payoff override preserves baseline debt metrics',
   }
 });
 
-test('active scenario Other debt override applies yearly recurrence on anchored dates', () => {
+test('native scenario projection ignores new zero-balance APR debt overrides', () => {
+  const aprDebtTypes = ['credit_card', 'vehicle_loan', 'personal_loan', 'student_loan'];
+
+  for (const debtType of aprDebtTypes) {
+    const caseData = baseCase({
+      baseline: {
+        start_month: '2026-06-01',
+        months: 6,
+        income_sources: [income({ amount: 4000, start_date: '2026-06-01' })],
+        debts: [debt({
+          id: 1,
+          name: 'Card',
+          current_balance: 1000,
+          minimum_monthly_payment: 100,
+          planned_extra_payment: 0,
+          start_date: '2026-06-01',
+        })],
+        interest_rates: [rate({ debt_id: 1, apr_percentage: 12, start_date: '2026-06-01' })],
+        account_balances: [account({ amount: 0, date: '2026-06-01' })],
+      },
+    });
+    const baselineProjection = generatedBaseline(caseData);
+    const result = scenario.buildScenarioGenerationResponse(
+      { ...baselineProjection, title: 'Actual' },
+      {
+        baseline_projection_id: 1,
+        debt_overrides: [
+          debt({
+            id: 99,
+            name: `Registration ${debtType}`,
+            debt_type: debtType,
+            current_balance: 0,
+            minimum_monthly_payment: 500,
+            planned_extra_payment: 0,
+            start_date: '2026-06-01',
+            priority_number: 2,
+          }),
+        ],
+        interest_rate_overrides: [
+          rate({ id: 99, debt_id: 99, apr_percentage: 0, start_date: '2026-06-01' }),
+        ],
+      },
+    );
+
+    assertNoScenarioDeltas(result, `Registration ${debtType}`);
+  }
+});
+
+test('native scenario projection ignores new zero-payment Other debt overrides', () => {
+  const caseData = baseCase({
+    baseline: {
+      start_month: '2026-06-01',
+      months: 6,
+      income_sources: [income({ amount: 4000, start_date: '2026-06-01' })],
+      debts: [debt({
+        id: 1,
+        name: 'Card',
+        current_balance: 1000,
+        minimum_monthly_payment: 100,
+        planned_extra_payment: 0,
+        start_date: '2026-06-01',
+      })],
+      interest_rates: [rate({ debt_id: 1, apr_percentage: 12, start_date: '2026-06-01' })],
+      account_balances: [account({ amount: 0, date: '2026-06-01' })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: null,
+          name: 'Registration',
+          debt_type: 'other',
+          current_balance: 0,
+          minimum_monthly_payment: 0,
+          planned_extra_payment: 0,
+          actual_monthly_payment: 0,
+          recurrence: 'yearly',
+          start_date: '2026-06-01',
+          payoff_target_date: null,
+          priority_number: null,
+        }),
+      ],
+    },
+  );
+
+  assertNoScenarioDeltas(result, 'Registration');
+});
+
+test('native scenario projection ignores new zero-balance Other debt overrides with scheduled payments', () => {
+  const caseData = baseCase({
+    baseline: {
+      start_month: '2026-06-01',
+      months: 6,
+      income_sources: [income({ amount: 4000, start_date: '2026-06-01' })],
+      debts: [debt({
+        id: 1,
+        name: 'Card',
+        current_balance: 1000,
+        minimum_monthly_payment: 100,
+        planned_extra_payment: 0,
+        start_date: '2026-06-01',
+      })],
+      interest_rates: [rate({ debt_id: 1, apr_percentage: 12, start_date: '2026-06-01' })],
+      account_balances: [account({ amount: 0, date: '2026-06-01' })],
+    },
+  });
+  const baselineProjection = generatedBaseline(caseData);
+  const result = scenario.buildScenarioGenerationResponse(
+    { ...baselineProjection, title: 'Actual' },
+    {
+      baseline_projection_id: 1,
+      debt_overrides: [
+        debt({
+          id: null,
+          name: 'Registration',
+          debt_type: 'other',
+          current_balance: 0,
+          minimum_monthly_payment: 150,
+          actual_monthly_payment: 300,
+          recurrence: 'yearly',
+          start_date: '2026-06-01',
+          payoff_target_date: null,
+          priority_number: null,
+        }),
+      ],
+    },
+  );
+
+  assertNoScenarioDeltas(result, 'Registration');
+});
+
+test('active existing scenario Other debt override applies yearly recurrence on anchored dates', () => {
   const caseData = baseCase({
     baseline: {
       start_month: '2026-03-01',
       months: 14,
       income_sources: [income({ amount: 1000, start_date: '2026-03-01' })],
-      debts: [],
+      debts: [debt({
+        id: 2,
+        name: 'Annual Fee',
+        debt_type: 'other',
+        current_balance: 0,
+        minimum_monthly_payment: 120,
+        actual_monthly_payment: 120,
+        recurrence: 'monthly',
+        start_date: '2026-03-15',
+        priority_number: null,
+      })],
       interest_rates: [],
       account_balances: [account({ amount: 0 })],
     },
@@ -814,7 +970,7 @@ test('active scenario Other debt override applies yearly recurrence on anchored 
       baseline_projection_id: 1,
       debt_overrides: [
         debt({
-          id: null,
+          id: 2,
           name: 'Annual Fee',
           debt_type: 'other',
           current_balance: 0,
