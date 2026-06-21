@@ -105,6 +105,21 @@ function yearlyOtherDebtEndYear(form) {
   return isoDateParts(form.payoffTargetDate)?.year || '';
 }
 
+function yearlyOtherDebtEndYearInput(form) {
+  return form.payoffTargetYear ?? yearlyOtherDebtEndYear(form);
+}
+
+function yearlyOtherDebtEndYearError(form, fallbackStartDate = '') {
+  if (!isYearlyOtherDebt(form)) return '';
+  const year = String(yearlyOtherDebtEndYearInput(form) || '');
+  if (!year) return '';
+  if (!/^\d{4}$/.test(year)) return 'End Year must be blank or exactly 4 digits.';
+  const paymentDate = form.startDate || fallbackStartDate;
+  const anchoredDate = yearlyOtherDebtEndDate(paymentDate, year);
+  if (paymentDate && anchoredDate && anchoredDate < paymentDate) return 'End Year must be the payment year or later.';
+  return '';
+}
+
 function normalizeOtherDebtRecurrence(value) {
   return OTHER_DEBT_RECURRENCE_OPTIONS.some((option) => option.value === value) ? value : 'monthly';
 }
@@ -458,6 +473,12 @@ export default function ScenarioBuilder({ isActive = false }) {
     const existingId = editingDebtOverrideIndex === null ? null : debtOverrides[editingDebtOverrideIndex]?.debt?.id;
     const temporaryId = existingId || Date.now();
     const defaultStartDate = baselineStartMonth(baseline);
+    const yearlyEndYearError = yearlyOtherDebtEndYearError(debtForm, defaultStartDate);
+    if (yearlyEndYearError) {
+      setDebtDateError(yearlyEndYearError);
+      setStatus(yearlyEndYearError);
+      return;
+    }
     const normalizedDebtForm = {
       ...debtForm,
       startingBalance: debtForm.currentBalance,
@@ -1062,7 +1083,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                           payoffTargetDate: recurrence === 'one_time'
                             ? ''
                             : recurrence === 'yearly' && current.payoffTargetDate
-                              ? yearlyOtherDebtEndDate(current.startDate, yearlyOtherDebtEndYear(current))
+                              ? yearlyOtherDebtEndDate(current.startDate, yearlyOtherDebtEndYearInput(current))
                               : current.payoffTargetDate,
                         }));
                       }}
@@ -1079,12 +1100,16 @@ export default function ScenarioBuilder({ isActive = false }) {
                         ...current,
                         startDate,
                         payoffTargetDate: isYearlyOtherDebt(current) && current.payoffTargetDate
-                          ? yearlyOtherDebtEndDate(startDate, yearlyOtherDebtEndYear(current))
+                          ? yearlyOtherDebtEndDate(startDate, yearlyOtherDebtEndYearInput(current))
                           : current.payoffTargetDate,
                       }));
                     }} /></label>
                     {isYearlyOtherDebt(debtForm) ? (
-                      <label>End Year<input type="number" min={isoDateParts(debtForm.startDate)?.year || 1900} step="1" value={yearlyOtherDebtEndYear(debtForm)} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value ? yearlyOtherDebtEndDate(debtForm.startDate, e.target.value) : '' })} /></label>
+                      <label>End Year<input type="text" inputMode="numeric" pattern="[0-9]*" maxLength="4" placeholder="YYYY" value={yearlyOtherDebtEndYearInput(debtForm)} onChange={(e) => {
+                        const year = e.target.value.replace(/\D/g, '').slice(0, 4);
+                        setDebtForm({ ...debtForm, payoffTargetYear: year, payoffTargetDate: year.length === 4 ? yearlyOtherDebtEndDate(debtForm.startDate, year) : '' });
+                        if (!year || year.length === 4) setDebtDateError('');
+                      }} /></label>
                     ) : !isOneTimeOtherDebt(debtForm) ? (
                       <label>End Date<input type="date" value={debtForm.payoffTargetDate} onChange={(e) => setDebtForm({ ...debtForm, payoffTargetDate: e.target.value })} /></label>
                     ) : null}
@@ -1098,7 +1123,7 @@ export default function ScenarioBuilder({ isActive = false }) {
                       setDebtForm({ ...debtForm, paymentDate: e.target.value });
                       if (e.target.value) setDebtDateError('');
                     }} /></label>
-                    {debtDateError ? <p className="field-error">Payment Date is required.</p> : null}
+                    {debtDateError ? <p className="field-error">{debtDateError}</p> : null}
                   </>
                 ) : null}
                 <EstimatedPaymentFields form={debtForm} />

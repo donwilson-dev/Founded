@@ -79,10 +79,18 @@ export function getColumns(rows = []) {
 }
 
 export function comparableCellValue(value) {
-  if (Array.isArray(value)) return value.join('|');
-  if (value === null || value === undefined || value === '') return '';
+  if (Array.isArray(value)) {
+    const normalized = value.map(comparableCellValue).filter((item) => item !== '');
+    return normalized.length ? normalized.join('|') : '';
+  }
+  if (value === null || value === undefined || value === '' || value === '-') return '';
   const numeric = Number(value);
   return Number.isFinite(numeric) ? Math.round(numeric * 100) / 100 : String(value);
+}
+
+function isEmptyScenarioValue(value) {
+  const comparable = comparableCellValue(value);
+  return comparable === '' || comparable === 0;
 }
 
 export function plusColumnHasDeviation(rows = [], column, plusColumn = `${column}+`) {
@@ -97,7 +105,8 @@ export function hiddenEqualPlusColumns(rows = []) {
   return columns.filter((column) => {
     if (!column.endsWith('+')) return false;
     const baseColumn = column.slice(0, -1);
-    return columns.includes(baseColumn) && !plusColumnHasDeviation(rows, baseColumn, column);
+    if (columns.includes(baseColumn)) return !plusColumnHasDeviation(rows, baseColumn, column);
+    return rows.every((row) => isEmptyScenarioValue(row[column]));
   });
 }
 
