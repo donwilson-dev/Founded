@@ -57,6 +57,9 @@ export default function Dashboard({ onNavigate, isActive = false }) {
   const [projectionAccount, setProjectionAccount] = useSessionState('founded.dashboard.projectionAccount', 'all');
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [headerRoot, setHeaderRoot] = useState(null);
+  const [exportModal, setExportModal] = useState(null);
+  const [exportFilename, setExportFilename] = useState('');
+  const [exportFilenameError, setExportFilenameError] = useState('');
 
   useEffect(() => {
     setHeaderRoot(document.getElementById('topbar-actions'));
@@ -234,6 +237,25 @@ export default function Dashboard({ onNavigate, isActive = false }) {
 
   function exportDashboardProjection(format) {
     if (!selectedProjection) return;
+    setExportModal({ format });
+    setExportFilename(defaultDashboardExportName(format));
+    setExportFilenameError('');
+  }
+
+  function cancelDashboardExport() {
+    setExportModal(null);
+    setExportFilename('');
+    setExportFilenameError('');
+  }
+
+  function confirmDashboardExport() {
+    if (!selectedProjection || !exportModal) return;
+    const filename = exportFilename.trim();
+    const error = validateExportFilename(filename);
+    if (error) {
+      setExportFilenameError(error);
+      return;
+    }
     const exportPayload = {
       projection: selectedProjection,
       rows: tableProjectionRows,
@@ -243,9 +265,10 @@ export default function Dashboard({ onNavigate, isActive = false }) {
       ownerLabel: effectiveProjectionOwner === 'overall' ? 'Overall' : effectiveProjectionOwner,
       accountLabel: accountOptions.find((item) => item.value === projectionAccount)?.label || 'All Accounts',
     };
-    if (format === 'csv') exportProjectionCsv(exportPayload);
-    if (format === 'xlsx') exportProjectionXlsx(exportPayload);
-    if (format === 'pdf') exportProjectionPdf(exportPayload);
+    if (exportModal.format === 'csv') exportProjectionCsv(exportPayload, filename);
+    if (exportModal.format === 'xlsx') exportProjectionXlsx(exportPayload, filename);
+    if (exportModal.format === 'pdf') exportProjectionPdf(exportPayload, filename);
+    cancelDashboardExport();
   }
 
   function changeProjectionOwner(owner) {
@@ -489,6 +512,17 @@ export default function Dashboard({ onNavigate, isActive = false }) {
       )}
 
       {status ? <div className="status-toast">{status}</div> : null}
+      <ExportFilenameModal
+        exportFormat={exportModal?.format}
+        filename={exportFilename}
+        error={exportFilenameError}
+        onChange={(value) => {
+          setExportFilename(value);
+          if (exportFilenameError) setExportFilenameError('');
+        }}
+        onCancel={cancelDashboardExport}
+        onConfirm={confirmDashboardExport}
+      />
     </div>
   );
 }
@@ -549,6 +583,39 @@ function SavedProjectionControl({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ExportFilenameModal({ exportFormat, filename, error, onChange, onCancel, onConfirm }) {
+  if (!exportFormat) return null;
+  const title = exportModalTitle(exportFormat);
+
+  return createPortal(
+    <div className="modal-backdrop export-filename-backdrop" role="presentation">
+      <section className="card export-filename-modal" role="dialog" aria-modal="true" aria-labelledby="export-filename-title">
+        <div className="section-title-row compact-title">
+          <h2 id="export-filename-title">{title}</h2>
+        </div>
+        <p className="export-filename-description">Enter a filename for the exported file.</p>
+        <label className="export-filename-field">
+          Filename
+          <input
+            type="text"
+            value={filename}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Filename"
+            autoFocus
+          />
+        </label>
+        {error ? <div className="form-error export-filename-error">{error}</div> : null}
+        <p className="export-filename-note">File will be saved to your browser's Downloads folder.</p>
+        <div className="export-filename-actions">
+          <button type="button" className="ghost-button" onClick={onCancel}>Cancel</button>
+          <button type="button" className="primary-button" onClick={onConfirm}>Export</button>
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 
@@ -984,7 +1051,7 @@ function dashboardExportSections({ projection, rows = [], columns = [], hasScena
   }));
 }
 
-function exportProjectionCsv(payload) {
+function exportProjectionCsv(payload, customFilename = '') {
   const sections = dashboardExportSections(payload);
   const projection = payload.projection;
   const hasScenario = payload.hasScenario;
@@ -992,11 +1059,11 @@ function exportProjectionCsv(payload) {
     const csvRows = [[section.title], section.headers, ...section.rows];
     return csvRows.map((row) => row.map(csvEscape).join(',')).join('\r\n');
   }).join('\r\n\r\n');
-  const filename = `${slugify(projection?.title || 'projection')}-${hasScenario ? 'scenario' : 'baseline'}.csv`;
+  const filename = exportFilenameWithExtension(customFilename, `${slugify(projection?.title || 'projection')}-${hasScenario ? 'scenario' : 'baseline'}`, 'csv');
   downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
 }
 
-function exportProjectionXlsx(payload) {
+function exportProjectionXlsx(payload, customFilename = '') {
   const sections = dashboardExportSections(payload, { richExport: true });
   const projection = payload.projection;
   const hasScenario = payload.hasScenario;
@@ -1011,11 +1078,11 @@ function exportProjectionXlsx(payload) {
   }));
   const workbookFiles = xlsxFiles(sheets);
   const bytes = zipFiles(workbookFiles);
-  const filename = `${slugify(projection?.title || 'projection')}-${hasScenario ? 'scenario' : 'baseline'}.xlsx`;
+  const filename = exportFilenameWithExtension(customFilename, `${slugify(projection?.title || 'projection')}-${hasScenario ? 'scenario' : 'baseline'}`, 'xlsx');
   downloadBinaryFile(filename, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
-function exportProjectionPdf(payload) {
+function exportProjectionPdf(payload, customFilename = '') {
   const sections = dashboardExportSections(payload, { richExport: true });
   const projection = payload.projection;
   const hasScenario = payload.hasScenario;
@@ -1024,8 +1091,32 @@ function exportProjectionPdf(payload) {
     metadata: exportMetadataRows(payload).map((row) => row.join(': ')),
     sections,
   });
-  const filename = `${slugify(projection?.title || 'projection')}-${hasScenario ? 'scenario' : 'baseline'}.pdf`;
+  const filename = exportFilenameWithExtension(customFilename, `${slugify(projection?.title || 'projection')}-${hasScenario ? 'scenario' : 'baseline'}`, 'pdf');
   downloadBinaryFile(filename, bytes, 'application/pdf');
+}
+
+function defaultDashboardExportName(format) {
+  if (format === 'xlsx') return 'Dashboard Export Excel';
+  if (format === 'pdf') return 'Dashboard Export PDF';
+  return 'Dashboard Export CSV';
+}
+
+function exportModalTitle(format) {
+  if (format === 'xlsx') return 'Export Excel File';
+  if (format === 'pdf') return 'Export PDF File';
+  return 'Export CSV File';
+}
+
+function validateExportFilename(filename) {
+  if (!filename) return 'Enter a filename before exporting.';
+  if (/[\\/:*?"<>|]/.test(filename)) return 'Filename cannot include \\ / : * ? " < > |';
+  return '';
+}
+
+function exportFilenameWithExtension(customFilename, fallbackBase, extension) {
+  const base = customFilename.trim() || fallbackBase;
+  const suffix = `.${extension}`;
+  return base.toLowerCase().endsWith(suffix) ? base : `${base}${suffix}`;
 }
 
 function addCsvSection(sections, title, headers, rows) {
