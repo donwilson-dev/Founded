@@ -1185,6 +1185,7 @@ export default function ScenarioBuilder({ isActive = false }) {
           initialVisibleCount={17}
           storageKey="founded.scenario.comparisonTable.v3"
           visibilityResetKey={`scenario:${scenarioTableColumns.join('|')}:${hiddenScenarioColumns.join('|')}`}
+          enableColumnReorder
         />
       ) : (
         <section className="card table-card">

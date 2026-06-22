@@ -26,10 +26,12 @@ export default function YearGroupedTable({
   visibleColumns = [],
   filters = {},
   emptyText = 'No rows to display.',
+  onColumnReorder = null,
 }) {
   const filteredRows = filterRows(rows, filters);
   const selectedColumns = visibleColumns.length ? visibleColumns : columns;
   const groups = groupRowsByYear(filteredRows);
+  const reorderable = typeof onColumnReorder === 'function' && selectedColumns.length > 1;
 
   if (!filteredRows.length) {
     return <div className="empty-state">{emptyText}</div>;
@@ -41,7 +43,32 @@ export default function YearGroupedTable({
         <thead>
           <tr>
             {selectedColumns.map((column) => (
-              <th className={column.endsWith('+') ? 'scenario-col' : ''} key={column}>
+              <th
+                className={projectionHeaderClassName(column, reorderable)}
+                draggable={reorderable}
+                key={column}
+                onDragStart={(event) => {
+                  if (!reorderable) return;
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', column);
+                  event.currentTarget.classList.add('dragging-column');
+                }}
+                onDragEnd={(event) => {
+                  event.currentTarget.classList.remove('dragging-column');
+                }}
+                onDragOver={(event) => {
+                  if (!reorderable) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(event) => {
+                  if (!reorderable) return;
+                  event.preventDefault();
+                  const sourceColumn = event.dataTransfer.getData('text/plain');
+                  onColumnReorder(sourceColumn, column);
+                }}
+                title={reorderable ? 'Drag to reorder column' : undefined}
+              >
                 {formatHeader(column)}
               </th>
             ))}
@@ -68,6 +95,13 @@ export default function YearGroupedTable({
       </table>
     </div>
   );
+}
+
+function projectionHeaderClassName(column, reorderable) {
+  const classes = [];
+  if (column.endsWith('+')) classes.push('scenario-col');
+  if (reorderable) classes.push('reorderable-column-header');
+  return classes.join(' ');
 }
 
 function cellClassName(column, value) {

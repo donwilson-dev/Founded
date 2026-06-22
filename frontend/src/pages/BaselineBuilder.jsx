@@ -1554,6 +1554,7 @@ export default function BaselineBuilder({ isActive = false }) {
           preferredColumns={TABLE_COLUMN_VIEWS.projectionOverview.defaultColumns}
           initialVisibleCount={9}
           storageKey="founded.baseline.projectionOverview.v3"
+          enableColumnReorder
         />
       ) : null}
       {status ? <div className="status-toast">{status}</div> : null}

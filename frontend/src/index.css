@@ -578,6 +578,24 @@ button {
   z-index: 1;
 }
 
+.projection-table th.reorderable-column-header {
+  cursor: grab;
+  user-select: none;
+}
+
+.projection-table th.reorderable-column-header:hover {
+  background: #123467;
+}
+
+.projection-table th.reorderable-column-header:active,
+.projection-table th.dragging-column {
+  cursor: grabbing;
+}
+
+.projection-table th.dragging-column {
+  opacity: 0.65;
+}
+
 .projection-table thead th:first-child,
 .mini-table thead th:first-child {
   border-top-left-radius: 7px;

@@ -2,7 +2,7 @@ import React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import FilterBar, { ExportDropdown } from './FilterBar.jsx';
 import YearGroupedTable from './YearGroupedTable.jsx';
-import { useSessionState } from '../utils/persistence.js';
+import { useLocalState, useSessionState } from '../utils/persistence.js';
 import { getColumns } from '../utils/tableHelpers.js';
 
 export default function ProjectionTable({
@@ -23,6 +23,7 @@ export default function ProjectionTable({
   onExport,
   hiddenColumns = [],
   onResetView,
+  enableColumnReorder = false,
 }) {
   const columns = useMemo(() => {
     const hidden = new Set(hiddenColumns);
@@ -34,13 +35,30 @@ export default function ProjectionTable({
   const stateKey = storageKey || `founded.table.${title}`;
   const [filters, setFilters] = useSessionState(`${stateKey}.filters`, {});
   const [visibleColumns, setVisibleColumns] = useSessionState(`${stateKey}.visibleColumns`, []);
+  const [columnOrder, setColumnOrder] = useLocalState(`${stateKey}.columnOrder`, []);
   const lastVisibilityResetKey = useRef(null);
   const columnSignature = columns.join('|');
+  const orderedColumns = useMemo(() => normalizeColumnOrder(columnOrder, columns), [columnOrder, columnSignature]);
+  const orderedColumnSignature = orderedColumns.join('|');
   const defaultVisibleColumns = useMemo(() => {
-    const preferred = preferredColumns.filter((column) => columns.includes(column));
-    return preferred.length ? preferred : columns.slice(0, initialVisibleCount);
-  }, [columns, preferredColumns, initialVisibleCount]);
+    const preferred = preferredColumns.filter((column) => orderedColumns.includes(column));
+    return preferred.length ? preferred : orderedColumns.slice(0, initialVisibleCount);
+  }, [orderedColumns, preferredColumns, initialVisibleCount]);
   const defaultVisibleSignature = defaultVisibleColumns.join('|');
+  const displayVisibleColumns = useMemo(
+    () => orderVisibleColumns(visibleColumns, orderedColumns),
+    [visibleColumns, orderedColumnSignature]
+  );
+
+  function reorderProjectionColumn(sourceColumn, targetColumn) {
+    if (!enableColumnReorder || sourceColumn === targetColumn) return;
+    const sourceIndex = orderedColumns.indexOf(sourceColumn);
+    const targetIndex = orderedColumns.indexOf(targetColumn);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const nextOrder = moveItem(orderedColumns, sourceIndex, targetIndex);
+    setColumnOrder(nextOrder);
+    setVisibleColumns((current = []) => orderVisibleColumns(current, nextOrder));
+  }
 
   useEffect(() => {
     const resetContextChanged = lastVisibilityResetKey.current !== visibilityResetKey;
@@ -50,10 +68,10 @@ export default function ProjectionTable({
       return;
     }
     setVisibleColumns((current = []) => {
-      const valid = Array.isArray(current) ? current.filter((column) => columns.includes(column)) : [];
+      const valid = Array.isArray(current) ? orderVisibleColumns(current, orderedColumns) : [];
       return valid.length ? valid : defaultVisibleColumns;
     });
-  }, [columnSignature, defaultVisibleSignature, visibilityResetKey]);
+  }, [columnSignature, orderedColumnSignature, defaultVisibleSignature, visibilityResetKey]);
 
   return (
     <section className="card table-card">
@@ -65,12 +83,13 @@ export default function ProjectionTable({
         <FilterBar
           filters={filters}
           onChange={setFilters}
-          columns={columns}
-          visibleColumns={visibleColumns}
+          columns={orderedColumns}
+          visibleColumns={displayVisibleColumns}
           onColumnsChange={setVisibleColumns}
           onReset={() => {
             setFilters({});
             setVisibleColumns(defaultVisibleColumns);
+            setColumnOrder([]);
             onResetView?.();
           }}
           ownerOptions={ownerOptions}
@@ -81,7 +100,35 @@ export default function ProjectionTable({
           onAccountChange={onAccountChange}
         />
       </div>
-      <YearGroupedTable rows={rows} columns={columns} visibleColumns={visibleColumns} filters={filters} emptyText={emptyText} />
+      <YearGroupedTable
+        rows={rows}
+        columns={orderedColumns}
+        visibleColumns={displayVisibleColumns}
+        filters={filters}
+        emptyText={emptyText}
+        onColumnReorder={enableColumnReorder ? reorderProjectionColumn : null}
+      />
     </section>
   );
+}
+
+function normalizeColumnOrder(savedOrder, columns) {
+  if (!Array.isArray(savedOrder) || !savedOrder.length) return columns;
+  const columnSet = new Set(columns);
+  const ordered = savedOrder.filter((column) => columnSet.has(column));
+  const missing = columns.filter((column) => !ordered.includes(column));
+  return [...ordered, ...missing];
+}
+
+function orderVisibleColumns(visibleColumns, orderedColumns) {
+  if (!Array.isArray(visibleColumns) || !visibleColumns.length) return [];
+  const visibleSet = new Set(visibleColumns);
+  return orderedColumns.filter((column) => visibleSet.has(column));
+}
+
+function moveItem(items, fromIndex, toIndex) {
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
 }

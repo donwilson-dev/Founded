@@ -500,6 +500,7 @@ export default function Dashboard({ onNavigate, isActive = false }) {
           }}
           emptyText={accountSelected ? 'No account projection data available.' : undefined}
           visibilityResetKey={`${projectionId || 'none'}:${effectiveProjectionOwner}:${projectionAccount}:${hasScenario ? 'scenario' : 'baseline'}:${projectionColumnResetSignature}:${hiddenProjectionColumnSignature}`}
+          enableColumnReorder
         />
         </>
       ) : (
