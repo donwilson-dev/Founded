@@ -95,7 +95,8 @@ function baseActualPayment(debt) {
   const minimum = Number(plainDebt.minimum_monthly_payment);
   const actual = plainDebt.actual_monthly_payment;
   if (actual !== null && actual !== undefined) {
-    return Math.max(Number(actual), minimum);
+    const actualPayment = Number(actual || 0);
+    return actualPayment > 0 ? actualPayment : minimum;
   }
   return minimum + Number(plainDebt.planned_extra_payment || 0);
 }

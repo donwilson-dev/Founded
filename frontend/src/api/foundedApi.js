@@ -161,18 +161,18 @@ export function toDebtPayload(form, defaults = {}) {
     ? (recurrence === 'one_time' ? null : form.payoffTargetDate || null)
     : form.payoffTargetDate || null;
   const rawMinimumPayment = Number(form.minimumMonthlyPayment || 0);
-  const rawActualPayment = form.actualPayment === '' || form.actualPayment === undefined
-    ? rawMinimumPayment + Number(form.plannedExtraPayment || 0)
+  const rawActualPayment = form.actualPayment === '' || form.actualPayment === undefined || form.actualPayment === null
+    ? 0
     : Number(form.actualPayment || 0);
-  const minimumPayment = isOtherDebt && rawMinimumPayment <= 0 && rawActualPayment > 0 ? rawActualPayment : rawMinimumPayment;
   return {
     account_balance_id: form.accountBalanceId ? Number(form.accountBalanceId) : null,
     name: form.name,
     debt_type: form.debtType,
     starting_balance: Number(form.startingBalance || currentBalance),
     current_balance: currentBalance,
-    minimum_monthly_payment: minimumPayment,
-    planned_extra_payment: Math.max(rawActualPayment - minimumPayment, 0),
+    minimum_monthly_payment: rawMinimumPayment,
+    actual_monthly_payment: rawActualPayment,
+    planned_extra_payment: rawActualPayment > 0 ? Math.max(rawActualPayment - rawMinimumPayment, 0) : 0,
     recurrence,
     payment_due_day: null,
     payment_date: isOtherDebt ? null : form.paymentDate || null,

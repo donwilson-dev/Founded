@@ -150,28 +150,6 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     }
   }
 
-  function viewAllInputs(section = '') {
-    if (projectionId) {
-      window.sessionStorage.setItem('founded.baseline.openProjectionId', String(projectionId));
-      if (section) window.sessionStorage.setItem('founded.baseline.focusSection', section);
-      window.dispatchEvent(new CustomEvent('founded:open-baseline', { detail: { projectionId } }));
-    }
-    onNavigate('baseline');
-  }
-
-  function viewAllMilestones() {
-    if (!projectionId || !selectedProjection) return;
-    if (hasScenario) {
-      window.sessionStorage.setItem('founded.scenario.openScenarioId', String(projectionId));
-      window.dispatchEvent(new CustomEvent('founded:open-scenario', { detail: { scenarioId: projectionId } }));
-      onNavigate('scenario');
-      return;
-    }
-    window.sessionStorage.setItem('founded.baseline.openProjectionId', String(projectionId));
-    window.dispatchEvent(new CustomEvent('founded:open-baseline', { detail: { projectionId } }));
-    onNavigate('baseline');
-  }
-
   const summary = dashboard?.summary || {};
   const snapshot = useMemo(() => projectionSnapshot(selectedProjection, summary), [selectedProjection, summary]);
   const hasScenario = Boolean(dashboard?.supports_scenario);
@@ -335,16 +313,12 @@ export default function Dashboard({ onNavigate, isActive = false }) {
           columns={['Bank', 'Account Type', 'Owner', 'Date', 'Amount']}
           rows={snapshot.accountBalanceRows}
           emptyText="Select a projection to preview account balances."
-          actionLabel="View All Account Balances"
-          onAction={() => viewAllInputs('account-balances')}
         />
         <SnapshotTable
           title="Debts"
           columns={['Debt Name', 'Type', 'Balance', 'Min Pay', 'Actual Payment', 'APR']}
           rows={snapshot.debtRows}
           emptyText="Select a projection to preview debts."
-          actionLabel="View All Debts"
-          onAction={() => viewAllInputs('debts')}
         />
         <section className="card snapshot-card summary-snapshot">
           <h2>{snapshot.summary.startMonth ? `Summary - ${shortMonth(snapshot.summary.startMonth)}` : 'Summary'}</h2>
@@ -417,7 +391,6 @@ export default function Dashboard({ onNavigate, isActive = false }) {
           milestones={milestones}
           isScenario={hasScenario}
           isEmpty={!hasDashboard}
-          onViewAll={viewAllMilestones}
         />
 
         <ChartCard
@@ -579,8 +552,7 @@ function SavedProjectionControl({
   );
 }
 
-function SnapshotTable({ title, columns, rows, emptyText, actionLabel, onAction }) {
-  const visibleRows = rows.slice(0, 5);
+function SnapshotTable({ title, columns, rows, emptyText }) {
   return (
     <section className="card snapshot-card">
       <h2>{title}</h2>
@@ -591,7 +563,7 @@ function SnapshotTable({ title, columns, rows, emptyText, actionLabel, onAction 
               <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
             </thead>
             <tbody>
-              {visibleRows.map((row, index) => (
+              {rows.map((row, index) => (
                 <tr key={`${title}-${index}`}>
                   {row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}
                 </tr>
@@ -602,9 +574,6 @@ function SnapshotTable({ title, columns, rows, emptyText, actionLabel, onAction 
       ) : (
         <div className="snapshot-empty">{emptyText}</div>
       )}
-      <button type="button" className="snapshot-link" onClick={onAction} disabled={!rows.length}>
-        {actionLabel}
-      </button>
     </section>
   );
 }
@@ -619,9 +588,7 @@ function SnapshotMetric({ icon: Icon, label, value, tone = 'default' }) {
   );
 }
 
-function MilestonesCard({ milestones, isScenario, isEmpty, onViewAll }) {
-  const visibleMilestones = milestones.slice(0, 6);
-  const hasMore = milestones.length > visibleMilestones.length || visibleMilestones.length === 6;
+function MilestonesCard({ milestones, isScenario, isEmpty }) {
   return (
     <section className="card milestones-card">
       <div className="card-header">
@@ -634,7 +601,7 @@ function MilestonesCard({ milestones, isScenario, isEmpty, onViewAll }) {
         </div>
       </div>
       <div className="milestone-list" aria-label={isScenario ? 'Scenario milestones' : 'Baseline milestones'}>
-        {!isEmpty && visibleMilestones.length ? visibleMilestones.map((item, index) => (
+        {!isEmpty && milestones.length ? milestones.map((item, index) => (
             <div className={`milestone-item ${item.type}`} key={`${item.month}-${item.label}-${index}`}>
               <span className="milestone-card-icon" aria-hidden="true">
                 <ListChecks size={15} />
@@ -650,11 +617,6 @@ function MilestonesCard({ milestones, isScenario, isEmpty, onViewAll }) {
           </div>
         )}
       </div>
-      {hasMore ? (
-        <button type="button" className="snapshot-link milestones-link" onClick={onViewAll}>
-          View All Milestones
-        </button>
-      ) : null}
     </section>
   );
 }

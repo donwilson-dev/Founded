@@ -62,7 +62,7 @@ function normalizedIncome(rawIncome) {
 }
 
 function normalizedDebt(rawDebt) {
-  return {
+  const debt = {
     id: calculationId(rawDebt),
     account_balance_id: rawDebt.legacy_account_balance_id ?? cleanId(rawDebt.account_balance_id) ?? null,
     name: rawDebt.name,
@@ -81,6 +81,8 @@ function normalizedDebt(rawDebt) {
     active: rawDebt.active ?? true,
     notes: rawDebt.notes ?? null,
   };
+  if (rawDebt.actual_monthly_payment !== undefined) debt.actual_monthly_payment = rawDebt.actual_monthly_payment;
+  return debt;
 }
 
 function normalizedInterestRate(rawRate) {

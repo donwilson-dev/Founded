@@ -105,14 +105,14 @@ function stringField(payload, field, { required = false, max = 120 } = {}) {
   return value || null;
 }
 
-function numberField(payload, field, { required = false, min = null, max = null } = {}) {
+function numberField(payload, field, { required = false, min = null, max = null, defaultValue = undefined } = {}) {
   if (payload[field] === undefined) {
     if (required) throw httpError(422, `${field} is required.`);
     return undefined;
   }
   if (payload[field] === null || payload[field] === '') {
     if (required) throw httpError(422, `${field} is required.`);
-    return null;
+    return defaultValue !== undefined ? defaultValue : null;
   }
   const value = Number(payload[field]);
   if (!Number.isFinite(value)) throw httpError(422, `${field} must be a number.`);
@@ -300,7 +300,8 @@ async function debtPayload(payload, existing = null) {
     debt_type: enumField(payload, 'debt_type', debtTypes, { required: !existing }),
     starting_balance: numberField(payload, 'starting_balance', { required: !existing, min: 0 }),
     current_balance: numberField(payload, 'current_balance', { required: !existing, min: 0 }),
-    minimum_monthly_payment: numberField(payload, 'minimum_monthly_payment', { required: !existing, min: 0 }),
+    minimum_monthly_payment: numberField(payload, 'minimum_monthly_payment', { min: 0, defaultValue: 0 }),
+    actual_monthly_payment: numberField(payload, 'actual_monthly_payment', { min: 0, defaultValue: 0 }),
     planned_extra_payment: numberField(payload, 'planned_extra_payment', { min: 0, defaultValue: 0 }),
     recurrence: enumField(payload, 'recurrence', debtRecurrences),
     payment_due_day: numberField(payload, 'payment_due_day', { min: 1, max: 31 }),
@@ -312,6 +313,8 @@ async function debtPayload(payload, existing = null) {
     active: booleanField(payload, 'active', existing ? undefined : true),
     notes: stringField(payload, 'notes', { max: 10000 }),
   });
+  if (!existing && values.minimum_monthly_payment === undefined) values.minimum_monthly_payment = 0;
+  if (!existing && values.actual_monthly_payment === undefined) values.actual_monthly_payment = 0;
   if (!existing && values.planned_extra_payment === undefined) values.planned_extra_payment = 0;
 
   const existingIds = existingAccountKeys(existing, ['account_balance_id', 'legacy_account_balance_id']);

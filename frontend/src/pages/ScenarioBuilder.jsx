@@ -23,6 +23,7 @@ import {
   getToAccountRefId,
   sameRecordId,
 } from '../utils/identity.js';
+import { debtActualInputValue, debtPaymentUsedValue } from '../utils/paymentFields.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
@@ -521,7 +522,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       debtType: item.debt.debt_type || 'credit_card',
       currentBalance: item.debt.current_balance ?? '',
       minimumMonthlyPayment: item.debt.minimum_monthly_payment ?? '',
-      actualPayment: Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0),
+      actualPayment: debtActualInputValue(item.debt),
       paymentDate: item.debt.payment_date || item.debt.paymentDate || '',
       startDate: item.debt.start_date || '',
       payoffTargetDate: item.debt.payoff_target_date || '',
@@ -595,8 +596,9 @@ export default function ScenarioBuilder({ isActive = false }) {
       const nextDebt = otherDebt
         ? {
           ...item.debt,
-          minimum_monthly_payment: amount,
-          planned_extra_payment: 0,
+          minimum_monthly_payment: 0,
+          actual_monthly_payment: amount,
+          planned_extra_payment: amount,
         }
         : {
           ...item.debt,
@@ -993,12 +995,12 @@ export default function ScenarioBuilder({ isActive = false }) {
               labelize(item.debt.debt_type),
               currencyPrecise(item.debt.current_balance),
               currencyPrecise(item.debt.minimum_monthly_payment),
-              currencyPrecise(Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0)),
+              currencyPrecise(debtPaymentUsedValue(item.debt)),
               item.debt.debt_type === 'other' ? labelize(item.debt.recurrence || 'monthly') : primaryApr(item),
               <InlineAmountInput
                 key={`debt-override-update-${index}`}
                 ariaLabel={`Update ${item.debt.name || 'debt deviation'} amount`}
-                value={item.debt.debt_type === 'other' ? Number(item.debt.minimum_monthly_payment || 0) + Number(item.debt.planned_extra_payment || 0) : item.debt.current_balance}
+                value={item.debt.debt_type === 'other' ? debtPaymentUsedValue(item.debt) : item.debt.current_balance}
                 disabled={busy}
                 onCommit={(value) => inlineUpdateDebtOverrideAmount(index, value)}
               />,
@@ -1510,6 +1512,7 @@ function comparableDebt(item = {}) {
     debt_type: item.debt_type || '',
     current_balance: Number(item.current_balance || 0),
     minimum_monthly_payment: Number(item.minimum_monthly_payment || 0),
+    actual_monthly_payment: Number(item.actual_monthly_payment || 0),
     planned_extra_payment: Number(item.planned_extra_payment || 0),
     recurrence: item.recurrence || null,
     payment_date: item.payment_date || null,

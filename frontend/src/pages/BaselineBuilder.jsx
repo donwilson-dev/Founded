@@ -35,6 +35,7 @@ import {
   getRecordId,
   getToAccountRefId,
 } from '../utils/identity.js';
+import { debtActualInputValue, debtPaymentUsedValue } from '../utils/paymentFields.js';
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
@@ -321,7 +322,7 @@ export default function BaselineBuilder({ isActive = false }) {
         .reduce((sum, item) => sum + monthlyIncomeAmount(item), 0);
       const payments = debts
         .filter((debt) => debt.active !== false)
-        .reduce((sum, debt) => sum + Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0), 0);
+        .reduce((sum, debt) => sum + debtPaymentUsedValue(debt), 0);
       const debt = debts
         .filter((item) => item.active !== false)
         .reduce((sum, item) => sum + Number(item.current_balance || 0), 0);
@@ -553,7 +554,7 @@ export default function BaselineBuilder({ isActive = false }) {
       startingBalance: debt.current_balance ?? '',
       currentBalance: debt.current_balance ?? '',
       minimumMonthlyPayment: debt.minimum_monthly_payment ?? '',
-      actualPayment: Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0),
+      actualPayment: debtActualInputValue(debt),
       plannedExtraPayment: debt.planned_extra_payment ?? 0,
       paymentDate: debt.payment_date || debt.paymentDate || '',
       startDate: debt.start_date || '',
@@ -848,12 +849,12 @@ export default function BaselineBuilder({ isActive = false }) {
     if (currentBalance === null) return;
     const otherDebt = debt.debt_type === 'other';
     const existingValue = otherDebt
-      ? Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0)
+      ? debtPaymentUsedValue(debt)
       : Number(debt.current_balance || 0);
     if (currentBalance === existingValue) return;
     setLoading(true);
     try {
-      const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
+      const actualPayment = debtActualInputValue(debt);
       const debtId = recordId(debt);
       await foundedApi.updateDebt(debtId, toDebtPayload({
         name: debt.name || '',
@@ -861,7 +862,7 @@ export default function BaselineBuilder({ isActive = false }) {
         debtType: debt.debt_type || 'credit_card',
         startingBalance: currentBalance,
         currentBalance: otherDebt ? debt.current_balance || 0 : currentBalance,
-        minimumMonthlyPayment: otherDebt ? currentBalance : debt.minimum_monthly_payment ?? 0,
+        minimumMonthlyPayment: otherDebt ? 0 : debt.minimum_monthly_payment ?? 0,
         actualPayment: otherDebt ? currentBalance : actualPayment,
         plannedExtraPayment: debt.planned_extra_payment ?? 0,
         paymentDate: debt.payment_date || debt.paymentDate || '',
@@ -895,7 +896,7 @@ export default function BaselineBuilder({ isActive = false }) {
     if ((debt.active !== false) === active) return;
     setLoading(true);
     try {
-      const actualPayment = Number(debt.minimum_monthly_payment || 0) + Number(debt.planned_extra_payment || 0);
+      const actualPayment = debtActualInputValue(debt);
       const debtId = recordId(debt);
       await foundedApi.updateDebt(debtId, toDebtPayload({
         name: debt.name || '',
@@ -1354,12 +1355,12 @@ export default function BaselineBuilder({ isActive = false }) {
               labelize(item.debt_type),
               currencyPrecise(item.current_balance),
               currencyPrecise(item.minimum_monthly_payment),
-              currencyPrecise(Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0)),
+              currencyPrecise(debtPaymentUsedValue(item)),
               debtAprLabel(item),
               <InlineAmountInput
                 key={`debt-update-${recordId(item)}`}
                 ariaLabel={`Update ${item.name || 'debt'} balance`}
-                value={item.debt_type === 'other' ? Number(item.minimum_monthly_payment || 0) + Number(item.planned_extra_payment || 0) : item.current_balance}
+                value={item.debt_type === 'other' ? debtPaymentUsedValue(item) : item.current_balance}
                 disabled={busy}
                 onCommit={(value) => inlineUpdateDebtBalance(item, value)}
               />,

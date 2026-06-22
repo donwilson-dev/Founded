@@ -128,10 +128,12 @@ function matchingBaselineDebtKey(debt, baselineKeys) {
 
 function scheduledDebtPayment(debt = {}) {
   const minimum = Number(debt.minimum_monthly_payment || 0);
-  const actual = debt.actual_monthly_payment === null || debt.actual_monthly_payment === undefined
-    ? minimum + Number(debt.planned_extra_payment || 0)
-    : Number(debt.actual_monthly_payment || 0);
-  return Number.isFinite(actual) ? actual : 0;
+  if (debt.actual_monthly_payment !== null && debt.actual_monthly_payment !== undefined) {
+    const actualPayment = Number(debt.actual_monthly_payment || 0);
+    return Number.isFinite(actualPayment) && actualPayment > 0 ? actualPayment : minimum;
+  }
+  const legacyActual = minimum + Number(debt.planned_extra_payment || 0);
+  return Number.isFinite(legacyActual) ? legacyActual : 0;
 }
 
 function isNonImpactingDebtOverride(debt, baselineKeys) {

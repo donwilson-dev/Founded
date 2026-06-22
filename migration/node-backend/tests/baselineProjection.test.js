@@ -190,6 +190,39 @@ test('native baseline projection matches FastAPI for duplicate debt labels, APRs
   assertParity(cases);
 });
 
+test('native baseline projection uses explicit actual payment over minimum payment', () => {
+  const result = baseline.generateBaselineProjection(
+    [income({ amount: 2000, frequency: 'monthly' })],
+    [
+      debt({
+        id: 10,
+        name: 'Actual Only',
+        current_balance: 1000,
+        minimum_monthly_payment: 0,
+        actual_monthly_payment: 500,
+        planned_extra_payment: 0,
+      }),
+      debt({
+        id: 11,
+        name: 'Minimum Only',
+        current_balance: 1000,
+        minimum_monthly_payment: 300,
+        actual_monthly_payment: 0,
+        planned_extra_payment: 0,
+        priority_number: 2,
+      }),
+    ],
+    [
+      rate({ id: 10, debt_id: 10, apr_percentage: 0 }),
+      rate({ id: 11, debt_id: 11, apr_percentage: 0 }),
+    ],
+    '2026-01-01',
+    1,
+  );
+
+  assert.equal(result.generated_rows[0]['Total Debt Payments'], 800);
+});
+
 test('native baseline projection keeps same-name debts without ids in separate balance columns', () => {
   const result = baseline.generateBaselineProjection(
     [],

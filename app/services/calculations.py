@@ -181,7 +181,8 @@ def base_actual_payment(debt: dict[str, Any]) -> float:
     minimum = float(debt["minimum_monthly_payment"])
     actual = debt.get("actual_monthly_payment")
     if actual is not None:
-        return max(float(actual), minimum)
+        actual_payment = float(actual or 0)
+        return actual_payment if actual_payment > 0 else minimum
     return minimum + float(debt.get("planned_extra_payment") or 0)
 
 

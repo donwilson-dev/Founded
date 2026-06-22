@@ -13,6 +13,7 @@ const debtSchema = new mongoose.Schema(
     starting_balance: { type: Number, required: true, min: 0 },
     current_balance: { type: Number, required: true, min: 0 },
     minimum_monthly_payment: { type: Number, required: true, min: 0 },
+    actual_monthly_payment: { type: Number, min: 0 },
     planned_extra_payment: { type: Number, default: 0, min: 0 },
     recurrence: { type: String, enum: debtRecurrences },
     payment_due_day: { type: Number, min: 1, max: 31 },

@@ -182,6 +182,21 @@ test('debt categorization and payment primitives match FastAPI outputs', () => {
   assertParity(cases);
 });
 
+test('base actual payment prioritizes explicit actual payment when positive', () => {
+  const cases = [
+    { debt: { minimum_monthly_payment: 300, actual_monthly_payment: 0, planned_extra_payment: 0 }, expected: 300 },
+    { debt: { minimum_monthly_payment: 0, actual_monthly_payment: 500, planned_extra_payment: 0 }, expected: 500 },
+    { debt: { minimum_monthly_payment: 300, actual_monthly_payment: 500, planned_extra_payment: 200 }, expected: 500 },
+    { debt: { minimum_monthly_payment: 0, actual_monthly_payment: 0, planned_extra_payment: 0 }, expected: 0 },
+    { debt: { minimum_monthly_payment: 300, actual_monthly_payment: undefined, planned_extra_payment: 200 }, expected: 500 },
+    { debt: { minimum_monthly_payment: 300, actual_monthly_payment: 200, planned_extra_payment: 0 }, expected: 200 },
+  ];
+
+  for (const { debt, expected } of cases) {
+    assert.equal(primitives.baseActualPayment(debt), expected);
+  }
+});
+
 test('income primitives match FastAPI recurrence and transfer behavior', () => {
   const cases = [
     {

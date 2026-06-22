@@ -273,6 +273,38 @@ test('native scenario projection matches FastAPI for no deviations and default t
   ]);
 });
 
+test('native scenario projection uses explicit actual payment for debt deviations', () => {
+  const baselineProjection = generateBaselineProjection(
+    [income({ amount: 2000, frequency: 'monthly' })],
+    [debt({ id: 1, current_balance: 1000, minimum_monthly_payment: 100, actual_monthly_payment: 0 })],
+    [rate({ id: 1, debt_id: 1, apr_percentage: 0 })],
+    '2026-01-01',
+    1,
+  );
+
+  const result = scenario.generateScenarioProjection(
+    baselineProjection.generated_rows,
+    baselineProjection.assumptions_snapshot,
+    '2026-01-01',
+    [],
+    [
+      debt({
+        id: null,
+        name: 'Actual Only',
+        current_balance: 1000,
+        minimum_monthly_payment: 0,
+        actual_monthly_payment: 500,
+        planned_extra_payment: 0,
+        priority_number: 2,
+      }),
+    ],
+    [],
+    1,
+  );
+
+  assert.equal(result.generated_rows[0]['Total Debt Payments+'], 600);
+});
+
 test('native scenario projection matches FastAPI income overrides and end-month windows', () => {
   assertParity([
     {
