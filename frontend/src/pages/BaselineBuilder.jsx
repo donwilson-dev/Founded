@@ -1165,6 +1165,16 @@ export default function BaselineBuilder({ isActive = false }) {
         </button>
       </section>
 
+      <section className="card summary-stack">
+        <h2>{rows[0]?.month ? `Summary - ${shortMonth(rows[0].month)}` : 'Summary'}</h2>
+        <SummaryCard icon={CircleDollarSign} label="Total Monthly Income" value={currency(summary.income)} tone="positive" sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={CreditCard} label="Total Monthly Debt Pay" value={currency(summary.payments)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={ReceiptText} label="Bills" value={currency(rows[0]?.Bills || 0)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={Landmark} label="Total Debt Balance" value={currency(summary.debt)} sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={TrendingDown} label="Monthly Surplus" value={currency(summary.remainingCash)} tone={summary.remainingCash < 0 ? 'danger' : 'positive'} sublabel={rows.length ? null : 'Not projected yet'} />
+        <SummaryCard icon={CalendarCheck} label="Projected Payoff Date" value={summary.payoff ? shortMonth(summary.payoff) : 'Not projected'} tone="scenario" />
+      </section>
+
       <section className="card data-card">
         <div className="card-header">
           <h2>Income Sources</h2>
@@ -1530,16 +1540,6 @@ export default function BaselineBuilder({ isActive = false }) {
             )}
           </form>
         )}
-      </section>
-
-      <section className="card summary-stack">
-        <h2>{rows[0]?.month ? `Summary - ${shortMonth(rows[0].month)}` : 'Summary'}</h2>
-        <SummaryCard icon={CircleDollarSign} label="Total Monthly Income" value={currency(summary.income)} tone="positive" sublabel={rows.length ? null : 'Not projected yet'} />
-        <SummaryCard icon={CreditCard} label="Total Monthly Debt Pay" value={currency(summary.payments)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
-        <SummaryCard icon={ReceiptText} label="Bills" value={currency(rows[0]?.Bills || 0)} tone="warning" sublabel={rows.length ? null : 'Not projected yet'} />
-        <SummaryCard icon={Landmark} label="Total Debt Balance" value={currency(summary.debt)} sublabel={rows.length ? null : 'Not projected yet'} />
-        <SummaryCard icon={TrendingDown} label="Monthly Surplus" value={currency(summary.remainingCash)} tone={summary.remainingCash < 0 ? 'danger' : 'positive'} sublabel={rows.length ? null : 'Not projected yet'} />
-        <SummaryCard icon={CalendarCheck} label="Projected Payoff Date" value={summary.payoff ? shortMonth(summary.payoff) : 'Not projected'} tone="scenario" />
       </section>
 
       {!rows.length ? (
