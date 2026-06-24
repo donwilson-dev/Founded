@@ -399,12 +399,19 @@ export default function BaselineBuilder({ isActive = false }) {
     ));
   }
 
-  function focusOpenedForm(ref) {
+  function scrollOpenedForm(ref) {
     window.setTimeout(() => {
       const form = ref.current;
       if (!form) return;
-      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      form.querySelector('input, select, textarea')?.focus({ preventScroll: true });
+      const bottomPadding = 24;
+      const viewportBottom = window.innerHeight - bottomPadding;
+      const rect = form.getBoundingClientRect();
+      if (rect.top >= 0 && rect.bottom <= viewportBottom) return;
+      if (rect.top < 0) {
+        window.scrollBy({ top: rect.top, behavior: 'smooth' });
+      } else if (rect.bottom > viewportBottom) {
+        window.scrollBy({ top: rect.bottom - viewportBottom, behavior: 'smooth' });
+      }
     }, 0);
   }
 
@@ -474,7 +481,7 @@ export default function BaselineBuilder({ isActive = false }) {
     setEditingAccountBalanceId(null);
     setAccountBalanceForm({ ...initialAccountBalance, date: todayDate() });
     setShowAccountBalanceForm(true);
-    focusOpenedForm(accountBalanceFormRef);
+    scrollOpenedForm(accountBalanceFormRef);
   }
 
   function startEditAccountBalance(balance) {
@@ -489,6 +496,7 @@ export default function BaselineBuilder({ isActive = false }) {
       active: Boolean(balance.active),
     });
     setShowAccountBalanceForm(true);
+    scrollOpenedForm(accountBalanceFormRef);
   }
 
   function cancelAccountBalanceForm() {
@@ -505,7 +513,7 @@ export default function BaselineBuilder({ isActive = false }) {
     setEditingIncomeId(null);
     setIncomeForm({ ...initialIncome, startDate: todayDate() });
     setShowIncomeForm(true);
-    focusOpenedForm(incomeFormRef);
+    scrollOpenedForm(incomeFormRef);
   }
 
   function startEditIncome(source) {
@@ -524,6 +532,7 @@ export default function BaselineBuilder({ isActive = false }) {
       active: Boolean(source.active),
     });
     setShowIncomeForm(true);
+    scrollOpenedForm(incomeFormRef);
   }
 
   function cancelIncomeForm() {
@@ -541,7 +550,7 @@ export default function BaselineBuilder({ isActive = false }) {
     setDebtForm({ ...initialDebt, startDate: defaultDebtStartDate() });
     setDebtDateError('');
     setShowDebtForm(true);
-    focusOpenedForm(debtFormRef);
+    scrollOpenedForm(debtFormRef);
   }
 
   function startEditDebt(debt) {
@@ -571,6 +580,7 @@ export default function BaselineBuilder({ isActive = false }) {
     });
     setDebtDateError('');
     setShowDebtForm(true);
+    scrollOpenedForm(debtFormRef);
   }
 
   function cancelDebtForm() {

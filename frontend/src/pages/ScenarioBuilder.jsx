@@ -212,12 +212,19 @@ export default function ScenarioBuilder({ isActive = false }) {
     setDebtOverrides((items) => reorderItems(items, fromIndex, toIndex));
   }
 
-  function focusOpenedForm(ref) {
+  function scrollOpenedForm(ref) {
     window.setTimeout(() => {
       const form = ref.current;
       if (!form) return;
-      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      form.querySelector('input, select, textarea')?.focus({ preventScroll: true });
+      const bottomPadding = 24;
+      const viewportBottom = window.innerHeight - bottomPadding;
+      const rect = form.getBoundingClientRect();
+      if (rect.top >= 0 && rect.bottom <= viewportBottom) return;
+      if (rect.top < 0) {
+        window.scrollBy({ top: rect.top, behavior: 'smooth' });
+      } else if (rect.bottom > viewportBottom) {
+        window.scrollBy({ top: rect.bottom - viewportBottom, behavior: 'smooth' });
+      }
     }, 0);
   }
 
@@ -327,7 +334,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       return;
     }
     setShowIncomeForm(true);
-    focusOpenedForm(incomeFormRef);
+    scrollOpenedForm(incomeFormRef);
   }
 
   function startAddDebtOverride() {
@@ -337,7 +344,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     }
     setDebtDateError('');
     setShowDebtForm(true);
-    focusOpenedForm(debtFormRef);
+    scrollOpenedForm(debtFormRef);
   }
 
   useEffect(() => {
@@ -539,6 +546,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     setDebtAprError('');
     setDebtDateError('');
     setShowDebtForm(true);
+    scrollOpenedForm(debtFormRef);
   }
 
   async function deleteDebtOverride(index) {
@@ -676,6 +684,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       active: item.active !== false,
     });
     setShowIncomeForm(true);
+    scrollOpenedForm(incomeFormRef);
   }
 
   async function deleteIncomeOverride(index) {
