@@ -41,6 +41,7 @@ export default function FilterBar({
   }, []);
 
   function toggleColumn(column) {
+    if (visibleColumns.includes(column) && visibleColumns.length <= 1) return;
     const next = visibleColumns.includes(column)
       ? visibleColumns.filter((item) => item !== column)
       : [...visibleColumns, column];
@@ -92,20 +93,27 @@ export default function FilterBar({
       ) : null}
       <div className="column-picker" ref={columnsPickerRef}>
         <button type="button" className="filter-columns-button" onClick={() => setColumnsOpen((value) => !value)}>
-          Filter Columns <ChevronDown size={15} />
+          Column Visibility <ChevronDown size={15} />
         </button>
         {columnsOpen ? (
           <div className="column-menu">
-            {columns.map((column) => (
-              <label key={column}>
-                <input
-                  type="checkbox"
-                  checked={visibleColumns.includes(column)}
-                  onChange={() => toggleColumn(column)}
-                />
-                {columnLabel(column)}
-              </label>
-            ))}
+            {columns.map((column) => {
+              const checked = visibleColumns.includes(column);
+              const lastVisibleColumn = checked && visibleColumns.length <= 1;
+              const label = columnLabel(column);
+              return (
+                <label key={column} title={`${checked ? 'Hide Column' : 'Show Column'}: ${label}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={lastVisibleColumn}
+                    aria-label={`${checked ? 'Hide Column' : 'Show Column'} ${label}`}
+                    onChange={() => toggleColumn(column)}
+                  />
+                  {label}
+                </label>
+              );
+            })}
           </div>
         ) : null}
       </div>

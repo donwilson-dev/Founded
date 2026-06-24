@@ -762,6 +762,14 @@ textarea {
   min-height: auto;
 }
 
+.column-menu input:disabled {
+  cursor: not-allowed;
+}
+
+.column-menu label:has(input:disabled) {
+  opacity: 0.62;
+}
+
 .owner-menu {
   width: 180px;
 }

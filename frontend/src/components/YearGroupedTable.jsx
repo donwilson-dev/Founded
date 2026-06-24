@@ -1,5 +1,5 @@
 import React from 'react';
-import { Fragment } from 'react';
+import { Fragment, useRef } from 'react';
 import { currencyPrecise, signedCurrencyPrecise, shortMonth } from '../utils/formatters.js';
 import { columnLabel, filterRows, groupRowsByYear, isMoneyColumn } from '../utils/tableHelpers.js';
 
@@ -27,18 +27,21 @@ export default function YearGroupedTable({
   filters = {},
   emptyText = 'No rows to display.',
   onColumnReorder = null,
+  onColumnHide = null,
 }) {
+  const tableWrapRef = useRef(null);
   const filteredRows = filterRows(rows, filters);
   const selectedColumns = visibleColumns.length ? visibleColumns : columns;
   const groups = groupRowsByYear(filteredRows);
   const reorderable = typeof onColumnReorder === 'function' && selectedColumns.length > 1;
+  const hideable = typeof onColumnHide === 'function' && selectedColumns.length > 1;
 
   if (!filteredRows.length) {
     return <div className="empty-state">{emptyText}</div>;
   }
 
   return (
-    <div className="table-wrap">
+    <div className="table-wrap" ref={tableWrapRef}>
       <table className="projection-table">
         <thead>
           <tr>
@@ -55,6 +58,9 @@ export default function YearGroupedTable({
                 }}
                 onDragEnd={(event) => {
                   event.currentTarget.classList.remove('dragging-column');
+                  if (hideable && isDropOutsideTable(event, tableWrapRef.current)) {
+                    onColumnHide(column);
+                  }
                 }}
                 onDragOver={(event) => {
                   if (!reorderable) return;
@@ -67,7 +73,7 @@ export default function YearGroupedTable({
                   const sourceColumn = event.dataTransfer.getData('text/plain');
                   onColumnReorder(sourceColumn, column);
                 }}
-                title={reorderable ? 'Drag to reorder column' : undefined}
+                title={reorderable ? 'Drag to reorder column. Drop outside the table to hide column.' : undefined}
               >
                 {formatHeader(column)}
               </th>
@@ -94,6 +100,19 @@ export default function YearGroupedTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function isDropOutsideTable(event, tableElement) {
+  if (!tableElement) return false;
+  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return false;
+  if (event.clientX === 0 && event.clientY === 0) return false;
+  const rect = tableElement.getBoundingClientRect();
+  return (
+    event.clientX < rect.left ||
+    event.clientX > rect.right ||
+    event.clientY < rect.top ||
+    event.clientY > rect.bottom
   );
 }
 

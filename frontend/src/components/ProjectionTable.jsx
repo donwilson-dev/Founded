@@ -1,5 +1,5 @@
 import React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import FilterBar, { ExportDropdown } from './FilterBar.jsx';
 import YearGroupedTable from './YearGroupedTable.jsx';
 import { useLocalState, useSessionState } from '../utils/persistence.js';
@@ -34,9 +34,8 @@ export default function ProjectionTable({
   }, [rows, preferredColumns, hiddenColumns]);
   const stateKey = storageKey || `founded.table.${title}`;
   const [filters, setFilters] = useSessionState(`${stateKey}.filters`, {});
-  const [visibleColumns, setVisibleColumns] = useSessionState(`${stateKey}.visibleColumns`, []);
+  const [visibleColumns, setVisibleColumns] = useLocalState(`${stateKey}.visibleColumns`, []);
   const [columnOrder, setColumnOrder] = useLocalState(`${stateKey}.columnOrder`, []);
-  const lastVisibilityResetKey = useRef(null);
   const columnSignature = columns.join('|');
   const orderedColumns = useMemo(() => normalizeColumnOrder(columnOrder, columns), [columnOrder, columnSignature]);
   const orderedColumnSignature = orderedColumns.join('|');
@@ -60,13 +59,17 @@ export default function ProjectionTable({
     setVisibleColumns((current = []) => orderVisibleColumns(current, nextOrder));
   }
 
+  function hideProjectionColumn(column) {
+    if (!enableColumnReorder) return;
+    setVisibleColumns((current = []) => {
+      const visible = orderVisibleColumns(current, orderedColumns);
+      const activeColumns = visible.length ? visible : defaultVisibleColumns;
+      if (activeColumns.length <= 1 || !activeColumns.includes(column)) return activeColumns;
+      return activeColumns.filter((item) => item !== column);
+    });
+  }
+
   useEffect(() => {
-    const resetContextChanged = lastVisibilityResetKey.current !== visibilityResetKey;
-    lastVisibilityResetKey.current = visibilityResetKey;
-    if (resetContextChanged) {
-      setVisibleColumns(defaultVisibleColumns);
-      return;
-    }
     setVisibleColumns((current = []) => {
       const valid = Array.isArray(current) ? orderVisibleColumns(current, orderedColumns) : [];
       return valid.length ? valid : defaultVisibleColumns;
@@ -107,6 +110,7 @@ export default function ProjectionTable({
         filters={filters}
         emptyText={emptyText}
         onColumnReorder={enableColumnReorder ? reorderProjectionColumn : null}
+        onColumnHide={enableColumnReorder ? hideProjectionColumn : null}
       />
     </section>
   );
