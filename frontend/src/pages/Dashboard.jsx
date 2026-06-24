@@ -609,6 +609,9 @@ function ExportFilenameModal({ exportFormat, filename, error, onChange, onCancel
           />
         </label>
         {error ? <div className="form-error export-filename-error">{error}</div> : null}
+        <p className="export-filename-note">
+          Exports use the standard Founded export format. Current column visibility, column order, and table filters do not affect exported content.
+        </p>
         <p className="export-filename-note">File will be saved to your browser's Downloads folder.</p>
         <div className="export-filename-actions">
           <button type="button" className="ghost-button" onClick={onCancel}>Cancel</button>
