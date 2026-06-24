@@ -855,14 +855,14 @@ export default function ScenarioBuilder({ isActive = false }) {
           <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={busy || !baselineReady}>
             <Save size={16} /> Save
           </button>
+          {baselineReady ? (
+            <button type="button" className="outline-button scenario-save-button" onClick={clearBaseline} disabled={busy}>
+              <Plus size={16} /> New
+            </button>
+          ) : null}
           <button className="primary-button" disabled={!baselineReady || busy} onClick={generateScenario}>
             {busy ? 'Working...' : 'Generate Scenario'}
           </button>
-          {baselineReady ? (
-            <button type="button" className="ghost-button" onClick={clearBaseline} disabled={busy}>
-              Clear Baseline
-            </button>
-          ) : null}
         </div>
       </section>
 
