@@ -512,7 +512,7 @@ export default function Dashboard({ onNavigate, isActive = false }) {
           emptyText={accountSelected ? 'No account projection data available.' : undefined}
           visibilityResetKey={`${projectionId || 'none'}:${effectiveProjectionOwner}:${projectionAccount}:${hasScenario ? 'scenario' : 'baseline'}:${projectionDefaultColumnResetSignature}:${projectionColumnResetSignature}:${hiddenProjectionColumnSignature}`}
           enableColumnReorder
-          resetVisibilityOnKeyChange={hasScenario && !accountSelected && !ownerSelected}
+          resetVisibilityOnKeyChange={accountSelected || ownerSelected || (hasScenario && !accountSelected && !ownerSelected)}
           className={hasScenario && !accountSelected && !ownerSelected ? 'scenario-comparison-table' : ''}
         />
         </>

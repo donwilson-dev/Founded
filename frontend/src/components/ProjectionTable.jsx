@@ -77,14 +77,16 @@ export default function ProjectionTable({
   }
 
   useEffect(() => {
+    const shouldResetForKey = resetVisibilityOnKeyChange && visibilityResetKey && appliedVisibilityResetKey !== visibilityResetKey;
     setVisibleColumns((current = []) => {
       const valid = Array.isArray(current) ? orderVisibleColumns(current, orderedColumns) : [];
-      if (resetVisibilityOnKeyChange && visibilityResetKey && appliedVisibilityResetKey !== visibilityResetKey) {
+      if (shouldResetForKey) {
         return defaultVisibleColumns;
       }
       return valid.length ? valid : defaultVisibleColumns;
     });
-    if (resetVisibilityOnKeyChange && visibilityResetKey && appliedVisibilityResetKey !== visibilityResetKey) {
+    if (shouldResetForKey) {
+      setColumnOrder([]);
       setAppliedVisibilityResetKey(visibilityResetKey);
     }
   }, [columnSignature, orderedColumnSignature, defaultVisibleSignature, visibilityResetKey, appliedVisibilityResetKey, resetVisibilityOnKeyChange]);
