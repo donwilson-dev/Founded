@@ -253,6 +253,14 @@ function scheduledActualPayment(debt, month = null) {
   return payment;
 }
 
+function hasDebtPaymentBehavior(debt, month = null) {
+  const plainDebt = toPlainObject(debt);
+  if (!(plainDebt.active ?? true)) {
+    return false;
+  }
+  return scheduledActualPayment(plainDebt, month) > 0 || targetPayoffActive(plainDebt);
+}
+
 function debtPaymentActiveForMonth(debt, month) {
   const plainDebt = toPlainObject(debt);
   if (!(plainDebt.active ?? true)) {
@@ -312,6 +320,7 @@ module.exports = {
   debtIdentity,
   debtColumnLabels,
   scheduledActualPayment,
+  hasDebtPaymentBehavior,
   debtPaymentActiveForMonth,
   monthlyInterest,
   accountLabel,

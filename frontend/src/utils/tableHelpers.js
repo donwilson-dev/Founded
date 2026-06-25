@@ -117,18 +117,49 @@ function pairedMetricColumns(rows = [], column) {
 }
 
 export function scenarioComparisonColumns(rows = []) {
-  return [
+  return scenarioComparisonColumnState(rows).columns;
+}
+
+const SCENARIO_METRIC_COLUMNS = [
+  'Income',
+  'Total Debt Payments',
+  'Bills',
+  'Interest',
+  'Principal',
+  'Total Debt Balance',
+  'Debts Paid Off',
+  'Monthly Surplus',
+  'Cash Balance',
+];
+
+export function scenarioComparisonColumnState(rows = []) {
+  const columns = getColumns(rows);
+  const defaultColumns = [
     'month',
-    ...pairedMetricColumns(rows, 'Income'),
-    ...pairedMetricColumns(rows, 'Total Debt Payments'),
-    ...pairedMetricColumns(rows, 'Bills'),
-    ...pairedMetricColumns(rows, 'Interest'),
-    ...pairedMetricColumns(rows, 'Principal'),
-    ...pairedMetricColumns(rows, 'Total Debt Balance'),
-    ...pairedMetricColumns(rows, 'Debts Paid Off'),
-    ...pairedMetricColumns(rows, 'Monthly Surplus'),
-    ...pairedMetricColumns(rows, 'Cash Balance'),
+    ...SCENARIO_METRIC_COLUMNS.flatMap((column) => pairedMetricColumns(rows, column)),
   ];
+  const defaultSet = new Set(defaultColumns);
+  const dynamicDeviationColumns = columns.flatMap((column) => {
+    if (!column.endsWith('+') || defaultSet.has(column)) return [];
+    const baseColumn = column.slice(0, -1);
+    if (columns.includes(baseColumn)) {
+      if (!plusColumnHasDeviation(rows, baseColumn, column)) return [];
+      if (defaultSet.has(baseColumn)) return [column];
+      return [baseColumn, column];
+    }
+    if (rows.every((row) => isEmptyScenarioValue(row[column]))) return [];
+    return [column];
+  });
+  const availableColumns = [
+    ...defaultColumns,
+    ...dynamicDeviationColumns.filter((column, index, list) => list.indexOf(column) === index),
+  ];
+  const availableSet = new Set(availableColumns);
+  return {
+    columns: availableColumns,
+    defaultColumns,
+    hiddenColumns: columns.filter((column) => !availableSet.has(column)),
+  };
 }
 
 export function columnLabel(column) {

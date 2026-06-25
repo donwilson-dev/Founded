@@ -27,7 +27,7 @@ import { debtActualInputValue, debtPaymentUsedValue } from '../utils/paymentFiel
 import { EstimatedPaymentFields } from '../utils/paymentEstimates.jsx';
 import { useSessionState } from '../utils/persistence.js';
 import { useProjectionAutoRegeneration } from '../utils/projectionAutoRegeneration.js';
-import { hiddenEqualPlusColumns, normalizeProjectionRows, scenarioComparisonColumns } from '../utils/tableHelpers.js';
+import { normalizeProjectionRows, scenarioComparisonColumnState } from '../utils/tableHelpers.js';
 
 const MAX_INCOME_DEVIATIONS = 10;
 const MAX_DEBT_DEVIATIONS = 10;
@@ -151,8 +151,10 @@ export default function ScenarioBuilder({ isActive = false }) {
   const { isRegenerating, runAutoRegeneration } = useProjectionAutoRegeneration({ setStatus });
   const busy = loading || isRegenerating;
   const normalizedScenarioRows = useMemo(() => normalizeProjectionRows(scenario?.generated_rows || []), [scenario]);
-  const scenarioTableColumns = useMemo(() => scenarioComparisonColumns(normalizedScenarioRows), [normalizedScenarioRows]);
-  const hiddenScenarioColumns = useMemo(() => hiddenEqualPlusColumns(normalizedScenarioRows), [normalizedScenarioRows]);
+  const scenarioColumnState = useMemo(() => scenarioComparisonColumnState(normalizedScenarioRows), [normalizedScenarioRows]);
+  const scenarioTableColumns = scenarioColumnState.columns;
+  const scenarioDefaultColumns = scenarioColumnState.defaultColumns;
+  const hiddenScenarioColumns = scenarioColumnState.hiddenColumns;
   const selectedSavedScenario = savedScenarios.find((item) => String(recordId(item)) === String(selectedScenarioId));
   const selectedBaseline = saved.find((item) => String(recordId(item)) === String(baselineId));
   const baselineReady = Boolean(baseline && selectedBaseline);
@@ -1190,11 +1192,14 @@ export default function ScenarioBuilder({ isActive = false }) {
           title="Side-by-Side Scenario Comparison"
           rows={normalizedScenarioRows}
           preferredColumns={scenarioTableColumns}
+          defaultVisibleColumns={scenarioDefaultColumns}
           hiddenColumns={hiddenScenarioColumns}
           initialVisibleCount={17}
           storageKey="founded.scenario.comparisonTable.v3"
-          visibilityResetKey={`scenario:${scenarioTableColumns.join('|')}:${hiddenScenarioColumns.join('|')}`}
+          visibilityResetKey={`scenario:${scenarioDefaultColumns.join('|')}:${scenarioTableColumns.join('|')}:${hiddenScenarioColumns.join('|')}`}
           enableColumnReorder
+          resetVisibilityOnKeyChange
+          className="scenario-comparison-table"
         />
       ) : (
         <section className="card table-card">

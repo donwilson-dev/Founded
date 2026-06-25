@@ -42,7 +42,7 @@ import {
   sameRecordId,
 } from '../utils/identity.js';
 import { useSessionState } from '../utils/persistence.js';
-import { TABLE_COLUMN_VIEWS, columnLabel, hiddenEqualPlusColumns, normalizeProjectionRows } from '../utils/tableHelpers.js';
+import { TABLE_COLUMN_VIEWS, columnLabel, hiddenEqualPlusColumns, normalizeProjectionRows, scenarioComparisonColumnState } from '../utils/tableHelpers.js';
 
 const colors = ['#2563eb', '#7c3aed', '#10b981', '#ef4444', '#14b8a6', '#f59e0b'];
 
@@ -207,10 +207,16 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     }
     return normalizeDashboardMilestones(rawMilestones, selectedProjection, hasScenario);
   }, [dashboard, accountSelected, projectionAccount, ownerSelected, selectedProjection, effectiveProjectionOwner, displayProjectionRows, hasScenario]);
-  const projectionTableColumns = useMemo(
-    () => hasScenario ? scenarioProjectionColumns(normalizedProjectionRows) : TABLE_COLUMN_VIEWS.projectionOverview.defaultColumns,
+  const dashboardScenarioColumnState = useMemo(
+    () => (hasScenario ? scenarioComparisonColumnState(normalizedProjectionRows) : null),
     [hasScenario, normalizedProjectionRows]
   );
+  const projectionTableColumns = hasScenario
+    ? dashboardScenarioColumnState.columns
+    : TABLE_COLUMN_VIEWS.projectionOverview.defaultColumns;
+  const projectionDefaultColumns = hasScenario
+    ? dashboardScenarioColumnState.defaultColumns
+    : TABLE_COLUMN_VIEWS.projectionOverview.defaultColumns;
   const accountTableColumns = useMemo(
     () => accountProjectionColumns(accountProjectionRows),
     [accountProjectionRows]
@@ -220,11 +226,15 @@ export default function Dashboard({ onNavigate, isActive = false }) {
     [ownerFilteredProjectionRows, selectedProjection, effectiveProjectionOwner]
   );
   const activeProjectionColumns = accountSelected ? accountTableColumns : ownerSelected ? ownerTableColumns : projectionTableColumns;
+  const activeDefaultProjectionColumns = accountSelected ? accountTableColumns : ownerSelected ? ownerTableColumns : projectionDefaultColumns;
   const hiddenProjectionColumns = useMemo(
-    () => hiddenEqualPlusColumns(tableProjectionRows),
-    [tableProjectionRows]
+    () => (hasScenario && !accountSelected && !ownerSelected
+      ? dashboardScenarioColumnState.hiddenColumns
+      : hiddenEqualPlusColumns(tableProjectionRows)),
+    [hasScenario, accountSelected, ownerSelected, dashboardScenarioColumnState, tableProjectionRows]
   );
   const projectionColumnResetSignature = activeProjectionColumns.join('|');
+  const projectionDefaultColumnResetSignature = activeDefaultProjectionColumns.join('|');
   const hiddenProjectionColumnSignature = hiddenProjectionColumns.join('|');
   const sampledChartRows = useMemo(() => annualChartRows(chartRows, 5), [chartRows]);
   const sampledCashRows = cashRows;
@@ -474,6 +484,7 @@ export default function Dashboard({ onNavigate, isActive = false }) {
         <ProjectionTable
           rows={tableProjectionRows}
           preferredColumns={activeProjectionColumns}
+          defaultVisibleColumns={activeDefaultProjectionColumns}
           initialVisibleCount={9}
           storageKey={
             accountSelected
@@ -499,8 +510,10 @@ export default function Dashboard({ onNavigate, isActive = false }) {
             if (projectionId) loadDashboard(projectionId);
           }}
           emptyText={accountSelected ? 'No account projection data available.' : undefined}
-          visibilityResetKey={`${projectionId || 'none'}:${effectiveProjectionOwner}:${projectionAccount}:${hasScenario ? 'scenario' : 'baseline'}:${projectionColumnResetSignature}:${hiddenProjectionColumnSignature}`}
+          visibilityResetKey={`${projectionId || 'none'}:${effectiveProjectionOwner}:${projectionAccount}:${hasScenario ? 'scenario' : 'baseline'}:${projectionDefaultColumnResetSignature}:${projectionColumnResetSignature}:${hiddenProjectionColumnSignature}`}
           enableColumnReorder
+          resetVisibilityOnKeyChange={hasScenario && !accountSelected && !ownerSelected}
+          className={hasScenario && !accountSelected && !ownerSelected ? 'scenario-comparison-table' : ''}
         />
         </>
       ) : (

@@ -12,6 +12,7 @@ const {
   debtIdentity,
   debtPaymentActiveForMonth,
   isBill,
+  hasDebtPaymentBehavior,
   monthlyIncomeAmount,
   monthlyInterest,
   scheduledActualPayment,
@@ -158,10 +159,19 @@ function generateBaselineProjection(
         continue;
       }
 
-      const apr = debtApr(debt, rateData, month);
-      const interest = monthlyInterest(balance, apr);
       const scheduledMinimum = Number(debt.minimum_monthly_payment);
       const scheduledActual = scheduledActualPayment(debt, month);
+      if (!bill && !hasDebtPaymentBehavior(debt, month)) {
+        row[name] = roundCurrency(Math.max(balance, 0));
+        row[`${name} Payment`] = 0.0;
+        row[`${name} Interest`] = 0.0;
+        row[`${name} Principal`] = 0.0;
+        totalBalance += balance;
+        continue;
+      }
+
+      const apr = debtApr(debt, rateData, month);
+      const interest = monthlyInterest(balance, apr);
       const regularPayment = bill ? scheduledActual : Math.min(balance + interest, scheduledActual);
       let payment = regularPayment;
       let principalPaid = Math.max(regularPayment - interest, 0);

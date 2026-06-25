@@ -618,6 +618,14 @@ button {
   text-align: center;
 }
 
+.scenario-comparison-table .projection-table th,
+.scenario-comparison-table .projection-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  min-width: 86px;
+}
+
 .projection-table tr:hover td {
   background: #f8fbff;
 }

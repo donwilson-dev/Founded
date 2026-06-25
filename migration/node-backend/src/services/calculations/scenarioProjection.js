@@ -6,7 +6,7 @@ const {
 } = require('./dateRecurrenceHelpers');
 const { generateAccountProjectionRows } = require('./accountProjection');
 const { generateBaselineProjection, jsonReady } = require('./baselineProjection');
-const { debtColumnLabels, debtIdentity, toPlainObject } = require('./primitives');
+const { debtColumnLabels, debtIdentity, hasDebtPaymentBehavior, isBill, toPlainObject } = require('./primitives');
 
 function identityKey(item, naturalKey = null) {
   if (item.id !== null && item.id !== undefined) {
@@ -48,6 +48,7 @@ function mergeAssumptionCollection(baselineItems, overrideItems = null, naturalK
   }
 
   const overrideKeys = new Set();
+  const overrideItemSet = new Set();
   for (const item of overrides) {
     let key = identityKey(item, naturalKey);
     if (item.id === null || item.id === undefined) {
@@ -63,11 +64,13 @@ function mergeAssumptionCollection(baselineItems, overrideItems = null, naturalK
     }
     mergedByKey.set(key, item);
     overrideKeys.add(key);
+    overrideItemSet.add(item);
   }
 
   return {
     items: orderedKeys.map((key) => mergedByKey.get(key)),
     overrideKeys,
+    overrideItems: overrideItemSet,
   };
 }
 
@@ -139,9 +142,15 @@ function scheduledDebtPayment(debt = {}) {
 function isNonImpactingDebtOverride(debt, baselineKeys) {
   if (!debt || debt.active === false) return false;
   if (debt.target_payoff_active) return false;
-  if (Number(debt.current_balance || 0) > 0) return false;
 
   const matchesBaselineDebt = matchingBaselineDebtKey(debt, baselineKeys);
+  if (isBill(debt)) {
+    if (matchesBaselineDebt) return false;
+    return scheduledDebtPayment(debt) <= 0;
+  }
+
+  if (Number(debt.current_balance || 0) > 0) return false;
+
   if (!matchesBaselineDebt) {
     return true;
   }
@@ -177,10 +186,18 @@ function debtMetricsDifferFromBaseline(scenarioRows = [], baselineRows = []) {
   });
 }
 
-function alignDebtMetricsToBaselineRows(scenarioRows = [], baselineRows = [], hasActiveIncomeChanges = false) {
+function alignDebtMetricsToBaselineRows(
+  scenarioRows = [],
+  baselineRows = [],
+  hasActiveIncomeChanges = false,
+  preserveScenarioBills = false,
+) {
   const baselineByMonth = new Map((baselineRows || []).map((row) => [row.month, row]));
   let cashBalance = null;
   const scenarioOwnedKeys = new Set(['month', 'Income', 'Monthly Surplus', 'Cash Balance']);
+  if (preserveScenarioBills) {
+    scenarioOwnedKeys.add('Bills');
+  }
 
   for (const row of scenarioRows || []) {
     const baselineRow = baselineByMonth.get(row.month);
@@ -252,6 +269,67 @@ function applyProjectionLabels(debts) {
   });
 }
 
+function debtDetailColumnKeys(debts = [], includeDebt = () => true) {
+  const detailColumns = new Set();
+  for (const debt of debts || []) {
+    if (!includeDebt(debt)) continue;
+    const label = debt._projection_label || debt.name;
+    if (!label) continue;
+    detailColumns.add(label);
+    detailColumns.add(`${label} Payment`);
+    detailColumns.add(`${label} Bill`);
+    detailColumns.add(`${label} Interest`);
+    detailColumns.add(`${label} Principal`);
+  }
+  return detailColumns;
+}
+
+function activeRateDebtReferenceSet(rates = []) {
+  const references = new Set();
+  for (const rate of rates || []) {
+    rateDebtReferenceKeys(rate).forEach((id) => references.add(id));
+  }
+  return references;
+}
+
+function debtHasActiveRateOverride(debt, activeRateDebtIds) {
+  if (!activeRateDebtIds.size) return false;
+  return debtReferenceKeys(debt).some((id) => activeRateDebtIds.has(id));
+}
+
+function debtCanUseApr(debt) {
+  const balance = Number(debt?.current_balance || 0);
+  return !isBill(debt) && balance > 0 && hasDebtPaymentBehavior(debt);
+}
+
+function rateAppliesToDebt(rate, debts = []) {
+  const rateDebtIds = rateDebtReferenceKeys(rate);
+  if (rateDebtIds.length === 0) return false;
+  return (debts || []).some((debt) => (
+    debtCanUseApr(debt)
+    && debtReferenceKeys(debt).some((id) => rateDebtIds.includes(id))
+  ));
+}
+
+function shouldEmitComparisonValue(key, value, baselineRow, allDebtDetailColumns, eligibleDebtDetailColumns) {
+  if (allDebtDetailColumns.has(key)) {
+    if (!eligibleDebtDetailColumns.has(key)) return false;
+    if (!Object.prototype.hasOwnProperty.call(baselineRow, key)) {
+      return !isEmptyComparisonValue(value);
+    }
+    return comparableMetric(baselineRow[key]) !== comparableMetric(value);
+  }
+  if (!Object.prototype.hasOwnProperty.call(baselineRow, key)) {
+    return !isEmptyComparisonValue(value);
+  }
+  return comparableMetric(baselineRow[key]) !== comparableMetric(value);
+}
+
+function isEmptyComparisonValue(value) {
+  const comparable = comparableMetric(value);
+  return comparable === '' || comparable === 0 || comparable === '[]';
+}
+
 function requestedMonthCount(baselineRows, start, end, months = null) {
   if (end) {
     return baselineRows.filter((row) => {
@@ -303,22 +381,27 @@ function generateScenarioProjection(
     return !rateDebtIds.some((id) => inactiveDebtIds.has(id));
   });
   const hasActiveIncomeChanges = activeIncomeOverrides.length > 0;
-  const hasActiveDebtChanges = activeDebtOverrides.length > 0 || activeInterestRateOverrides.length > 0;
-  const shouldEmitComparisonFields = hasActiveIncomeChanges || hasActiveDebtChanges || !hasIgnoredActiveDebtOverrides;
+  const activeTrueDebtOverrides = activeDebtOverrides.filter((item) => !isBill(item));
+  const activeBillDebtOverrides = activeDebtOverrides.filter((item) => isBill(item));
+  const hasActiveBillChanges = activeBillDebtOverrides.length > 0;
   const hasInactiveScenarioInputs = hasInactiveIncomeInputs || hasInactiveDebtInputs;
   const { items: income } = mergeAssumptionCollection(
     baselineAssumptions.income_sources || [],
     activeIncomeOverrides,
     'label',
   );
-  const { items: debts, overrideKeys: overriddenDebtKeys } = mergeAssumptionCollection(
+  const { items: debts, overrideKeys: overriddenDebtKeys, overrideItems: overriddenDebtItems } = mergeAssumptionCollection(
     baselineAssumptions.debts || [],
     activeDebtOverrides,
     null,
   );
+  const activeAprOverrides = activeInterestRateOverrides.filter((rate) => rateAppliesToDebt(rate, debts));
+  const hasActiveTrueDebtChanges = activeTrueDebtOverrides.length > 0 || activeAprOverrides.length > 0;
+  const hasActiveDebtChanges = activeDebtOverrides.length > 0 || activeAprOverrides.length > 0;
+  const shouldEmitComparisonFields = hasActiveIncomeChanges || hasActiveDebtChanges || !hasIgnoredActiveDebtOverrides;
   const { items: rates } = mergeAssumptionCollection(
     baselineAssumptions.interest_rates || [],
-    activeInterestRateOverrides,
+    activeAprOverrides,
   );
 
   let nextTemporaryDebtId = -1;
@@ -336,6 +419,16 @@ function generateScenarioProjection(
   const balanceSourceRow = (baselineRows || []).find((row) => firstOfMonth(row.month).getTime() === priorMonth.getTime());
 
   applyProjectionLabels(debts);
+  const activeRateDebtIds = activeRateDebtReferenceSet(activeAprOverrides);
+  const allDebtDetailColumns = debtDetailColumnKeys(debts);
+  const eligibleDebtDetailColumns = debtDetailColumnKeys(debts, (debt) => (
+    !isBill(debt)
+    && hasDebtPaymentBehavior(debt)
+    && (
+      overriddenDebtItems.has(debt)
+      || debtHasActiveRateOverride(debt, activeRateDebtIds)
+    )
+  ));
 
   if (balanceSourceRow) {
     for (const debt of debts) {
@@ -358,10 +451,15 @@ function generateScenarioProjection(
   );
   if (!hasActiveIncomeChanges && !hasActiveDebtChanges && hasInactiveScenarioInputs) {
     alignScenarioRowsToBaselineRows(scenario.generated_rows, baselineRows);
-  } else if (!hasActiveDebtChanges
-    && (hasInactiveDebtInputs || hasActiveIncomeChanges)
+  } else if (!hasActiveTrueDebtChanges
+    && (hasInactiveDebtInputs || hasActiveIncomeChanges || hasActiveBillChanges)
     && debtMetricsDifferFromBaseline(scenario.generated_rows, baselineRows)) {
-    alignDebtMetricsToBaselineRows(scenario.generated_rows, baselineRows, hasActiveIncomeChanges);
+    alignDebtMetricsToBaselineRows(
+      scenario.generated_rows,
+      baselineRows,
+      hasActiveIncomeChanges,
+      hasActiveBillChanges,
+    );
   }
   const scenarioByMonth = new Map(scenario.generated_rows.map((row) => [row.month, row]));
   const baselineAccountProjectionRows = generateAccountProjectionRows(
@@ -390,12 +488,23 @@ function generateScenarioProjection(
         if (key === 'month' || key === 'Debts Paid Off') {
           continue;
         }
+        if (!shouldEmitComparisonValue(key, value, baselineRow, allDebtDetailColumns, eligibleDebtDetailColumns)) {
+          continue;
+        }
         merged[`${key}+`] = value;
         if (typeof value === 'number' && typeof baselineRow[key] === 'number') {
           merged[`${key} Difference`] = Math.round((value - baselineRow[key]) * 100) / 100;
         }
       }
-      merged['Debts Paid Off+'] = scenarioRow['Debts Paid Off'] || [];
+      if (shouldEmitComparisonValue(
+        'Debts Paid Off',
+        scenarioRow['Debts Paid Off'] || [],
+        baselineRow,
+        allDebtDetailColumns,
+        eligibleDebtDetailColumns,
+      )) {
+        merged['Debts Paid Off+'] = scenarioRow['Debts Paid Off'] || [];
+      }
     }
     rows.push(merged);
   }

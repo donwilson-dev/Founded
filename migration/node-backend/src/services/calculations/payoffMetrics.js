@@ -8,6 +8,7 @@ const {
   debtApr,
   debtIdentity,
   debtPaymentActiveForMonth,
+  hasDebtPaymentBehavior,
   isTrueDebt,
   monthlyInterest,
   scheduledActualPayment,
@@ -169,7 +170,7 @@ function calculatePayoffMetrics(
       lastAvailableCash = Math.max(cashByMonth[monthKey], 0.0);
     }
     const activeDebts = ordered.filter(
-      (debt) => balances[debtKeys.get(debt)] > 0 && debtPaymentActiveForMonth(debt, month),
+      (debt) => balances[debtKeys.get(debt)] > 0 && debtPaymentActiveForMonth(debt, month) && hasDebtPaymentBehavior(debt, month),
     );
 
     if (activeDebts.length === 0) {
@@ -198,6 +199,9 @@ function calculatePayoffMetrics(
         continue;
       }
       if (!debtPaymentActiveForMonth(debt, month)) {
+        continue;
+      }
+      if (!hasDebtPaymentBehavior(debt, month)) {
         continue;
       }
 

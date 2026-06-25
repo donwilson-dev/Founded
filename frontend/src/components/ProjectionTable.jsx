@@ -24,6 +24,9 @@ export default function ProjectionTable({
   hiddenColumns = [],
   onResetView,
   enableColumnReorder = false,
+  resetVisibilityOnKeyChange = false,
+  defaultVisibleColumns: defaultVisibleColumnsProp = null,
+  className = '',
 }) {
   const columns = useMemo(() => {
     const hidden = new Set(hiddenColumns);
@@ -36,13 +39,17 @@ export default function ProjectionTable({
   const [filters, setFilters] = useSessionState(`${stateKey}.filters`, {});
   const [visibleColumns, setVisibleColumns] = useLocalState(`${stateKey}.visibleColumns`, []);
   const [columnOrder, setColumnOrder] = useLocalState(`${stateKey}.columnOrder`, []);
+  const [appliedVisibilityResetKey, setAppliedVisibilityResetKey] = useLocalState(`${stateKey}.visibilityResetKey`, '');
   const columnSignature = columns.join('|');
   const orderedColumns = useMemo(() => normalizeColumnOrder(columnOrder, columns), [columnOrder, columnSignature]);
   const orderedColumnSignature = orderedColumns.join('|');
   const defaultVisibleColumns = useMemo(() => {
-    const preferred = preferredColumns.filter((column) => orderedColumns.includes(column));
+    const requestedDefaults = Array.isArray(defaultVisibleColumnsProp) && defaultVisibleColumnsProp.length
+      ? defaultVisibleColumnsProp
+      : preferredColumns;
+    const preferred = requestedDefaults.filter((column) => orderedColumns.includes(column));
     return preferred.length ? preferred : orderedColumns.slice(0, initialVisibleCount);
-  }, [orderedColumns, preferredColumns, initialVisibleCount]);
+  }, [orderedColumns, preferredColumns, defaultVisibleColumnsProp, initialVisibleCount]);
   const defaultVisibleSignature = defaultVisibleColumns.join('|');
   const displayVisibleColumns = useMemo(
     () => orderVisibleColumns(visibleColumns, orderedColumns),
@@ -72,12 +79,18 @@ export default function ProjectionTable({
   useEffect(() => {
     setVisibleColumns((current = []) => {
       const valid = Array.isArray(current) ? orderVisibleColumns(current, orderedColumns) : [];
+      if (resetVisibilityOnKeyChange && visibilityResetKey && appliedVisibilityResetKey !== visibilityResetKey) {
+        return defaultVisibleColumns;
+      }
       return valid.length ? valid : defaultVisibleColumns;
     });
-  }, [columnSignature, orderedColumnSignature, defaultVisibleSignature, visibilityResetKey]);
+    if (resetVisibilityOnKeyChange && visibilityResetKey && appliedVisibilityResetKey !== visibilityResetKey) {
+      setAppliedVisibilityResetKey(visibilityResetKey);
+    }
+  }, [columnSignature, orderedColumnSignature, defaultVisibleSignature, visibilityResetKey, appliedVisibilityResetKey, resetVisibilityOnKeyChange]);
 
   return (
-    <section className="card table-card">
+    <section className={`card table-card ${className}`.trim()}>
       <div className="section-title-row projection-overview-header">
         <div className="projection-title-actions">
           <h2>{title}</h2>
@@ -93,6 +106,9 @@ export default function ProjectionTable({
             setFilters({});
             setVisibleColumns(defaultVisibleColumns);
             setColumnOrder([]);
+            if (resetVisibilityOnKeyChange && visibilityResetKey) {
+              setAppliedVisibilityResetKey(visibilityResetKey);
+            }
             onResetView?.();
           }}
           ownerOptions={ownerOptions}
