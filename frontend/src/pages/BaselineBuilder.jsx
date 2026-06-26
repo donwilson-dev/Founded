@@ -1135,7 +1135,7 @@ export default function BaselineBuilder({ isActive = false }) {
             <Save size={16} /> Save
           </button>
           <label>
-            Load Saved Projection
+            Load Saved Baseline
             <select value={selectedSavedProjectionId} onChange={(event) => event.target.value && openProjection(event.target.value)} disabled={busy}>
               <option value="">Select a saved baseline</option>
               {savedProjections.map((item) => (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitCompare, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
+import { GripVertical, Info, Plus, Save, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   foundedApi,
@@ -136,6 +136,7 @@ export default function ScenarioBuilder({ isActive = false }) {
   const [incomeForm, setIncomeForm] = useSessionState('founded.scenario.incomeForm', incomeTemplate);
   const [debtForm, setDebtForm] = useSessionState('founded.scenario.debtForm', debtTemplate);
   const [selectedScenarioId, setSelectedScenarioId] = useSessionState('founded.scenario.selectedScenarioId', '');
+  const [scenarioTitle, setScenarioTitle] = useSessionState('founded.scenario.title', '');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingDeleteScenarioId, setPendingDeleteScenarioId] = useState(null);
@@ -158,6 +159,14 @@ export default function ScenarioBuilder({ isActive = false }) {
   const selectedSavedScenario = savedScenarios.find((item) => String(recordId(item)) === String(selectedScenarioId));
   const selectedBaseline = saved.find((item) => String(recordId(item)) === String(baselineId));
   const baselineReady = Boolean(baseline && selectedBaseline);
+  const scenarioReady = baselineReady && Boolean(selectedScenarioId);
+  const visibleSavedScenarios = useMemo(() => {
+    if (!baselineReady) return savedScenarios;
+    return savedScenarios.filter((item) => {
+      const itemBaselineId = item.assumptions_snapshot?.baseline_projection_id;
+      return !itemBaselineId || String(itemBaselineId) === String(baselineId) || String(recordId(item)) === String(selectedScenarioId);
+    });
+  }, [baselineId, baselineReady, savedScenarios, selectedScenarioId]);
   const baselineAccounts = useMemo(
     () => baseline?.assumptions_snapshot?.account_balances || baseline?.assumptions_snapshot?.baseline_assumptions?.account_balances || [],
     [baseline]
@@ -178,6 +187,7 @@ export default function ScenarioBuilder({ isActive = false }) {
 
   function clearSelectedScenarioState({ clearOverrides = false } = {}) {
     setSelectedScenarioId('');
+    setScenarioTitle('');
     setPendingDeleteScenarioId(null);
     setScenario(null);
     if (clearOverrides) {
@@ -279,14 +289,18 @@ export default function ScenarioBuilder({ isActive = false }) {
   }), [baselineId, debtOverrides, incomeOverrides]);
 
   const saveGeneratedScenario = useCallback(async (generated) => {
+    if (!selectedSavedScenario) {
+      throw new Error('Save the scenario before making changes.');
+    }
     const savedScenario = await foundedApi.saveProjection({
-      title: selectedSavedScenario?.title || defaultScenarioTitle(baseline),
+      title: selectedSavedScenario.title,
       projectionType: 'scenario',
       notes: null,
       assumptionsSnapshot: generated.assumptions_snapshot,
       generatedRows: generated.generated_rows || [],
     });
     setSelectedScenarioId(String(recordId(savedScenario)));
+    setScenarioTitle(savedScenario.title || selectedSavedScenario.title);
     setPendingDeleteScenarioId(null);
     setSavedScenarios((items) => [
       savedScenario,
@@ -294,7 +308,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     ]);
     window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
     return savedScenario;
-  }, [baseline, selectedSavedScenario]);
+  }, [selectedSavedScenario, setScenarioTitle]);
 
   const autoSaveScenarioProjection = useCallback(async ({
     incomeOverrides: nextIncomeOverrides = incomeOverrides,
@@ -302,6 +316,7 @@ export default function ScenarioBuilder({ isActive = false }) {
     successMessage = 'Scenario regenerated and saved.',
   } = {}) => {
     if (!baselineReady) throw new Error('Load a baseline before auto-regeneration.');
+    if (!selectedScenarioId || !selectedSavedScenario) throw new Error('Save or load a scenario before making changes.');
     return runAutoRegeneration({
       successMessage,
       task: async (notify) => {
@@ -327,6 +342,8 @@ export default function ScenarioBuilder({ isActive = false }) {
     runAutoRegeneration,
     saveGeneratedScenario,
     scenarioGenerationPayload,
+    selectedSavedScenario,
+    selectedScenarioId,
     setScenario,
   ]);
 
@@ -411,14 +428,31 @@ export default function ScenarioBuilder({ isActive = false }) {
     }
   }
 
-  function clearBaseline() {
-    clearLoadedBaselineState();
-    setStatus('Baseline selection cleared.');
+  function startNewScenario() {
+    clearSelectedScenarioState({ clearOverrides: true });
+    setStatus('Ready for a new scenario.');
+  }
+
+  function draftScenarioSnapshot() {
+    return {
+      ...(baseline?.assumptions_snapshot || {}),
+      baseline_projection_id: Number(baselineId),
+      baseline_assumptions: baseline?.assumptions_snapshot || {},
+      scenario_overrides: {
+        income_overrides: withDisplayOrder(incomeOverrides),
+        debt_overrides: withDisplayOrder(debtOverrides.map((item) => item.debt)),
+        interest_rate_overrides: debtOverrides.flatMap((item) => item.rates || (item.rate ? [item.rate] : [])).filter(Boolean),
+        scenario_start_month: null,
+        scenario_end_month: null,
+        months: null,
+      },
+    };
   }
 
   function resetGeneratedScenarioState() {
     setScenario(null);
     setSelectedScenarioId('');
+    setScenarioTitle('');
     setPendingDeleteScenarioId(null);
   }
 
@@ -727,9 +761,41 @@ export default function ScenarioBuilder({ isActive = false }) {
   }
 
   async function saveScenario() {
+    const title = scenarioTitle.trim();
+    if (!baselineReady) {
+      setStatus('Load a baseline before saving a scenario.');
+      return;
+    }
+    if (!title) {
+      setStatus('Scenario Title is required.');
+      return;
+    }
     setLoading(true);
     try {
-      await autoSaveScenarioProjection({ successMessage: 'Scenario generated and saved.' });
+      const generatedRows = scenario?.generated_rows || [];
+      const assumptionsSnapshot = scenario?.assumptions_snapshot || draftScenarioSnapshot();
+      const savedScenario = await foundedApi.saveProjection({
+        title,
+        projectionType: 'scenario',
+        notes: null,
+        assumptionsSnapshot,
+        generatedRows,
+      });
+      setSelectedScenarioId(String(recordId(savedScenario)));
+      setScenarioTitle(savedScenario.title || title);
+      setPendingDeleteScenarioId(null);
+      setSavedScenarios((items) => [
+        savedScenario,
+        ...items.filter((item) => String(recordId(item)) !== String(recordId(savedScenario))),
+      ]);
+      setScenario({
+        ...(scenario || {}),
+        ...savedScenario,
+        generated_rows: savedScenario.generated_rows || generatedRows,
+        assumptions_snapshot: savedScenario.assumptions_snapshot || assumptionsSnapshot,
+      });
+      window.dispatchEvent(new CustomEvent('founded:saved-projections-changed'));
+      setStatus('Scenario saved.');
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -768,7 +834,8 @@ export default function ScenarioBuilder({ isActive = false }) {
       const opened = await foundedApi.getSavedProjection(id);
       const assumptions = opened.assumptions_snapshot || {};
       const restoredOverrides = restoreScenarioOverrides(assumptions);
-      setScenario({ projection_type: opened.projection_type, assumptions_snapshot: opened.assumptions_snapshot, generated_rows: opened.generated_rows });
+      setScenario(opened);
+      setScenarioTitle(opened.title || '');
       setIncomeOverrides(restoredOverrides.incomeOverrides);
       setDebtOverrides(restoredOverrides.debtOverrides);
       setShowIncomeForm(false);
@@ -796,38 +863,36 @@ export default function ScenarioBuilder({ isActive = false }) {
   return (
     <div className="scenario-grid">
       <section className="card scenario-setup-card">
-        <div className="scenario-baseline-inline">
-          <div className="scenario-baseline-title">
-            <h2>Load Baseline</h2>
-            <GitCompare size={18} />
-          </div>
-          <div className="scenario-control-row">
-            <label>
-              Baseline Projection
-              <select value={baselineId} onChange={(event) => loadBaseline(event.target.value)} disabled={busy}>
-                <option value="">Select a saved baseline</option>
-                {saved.map((item) => (
-                  <option key={recordId(item)} value={recordId(item)}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+        <div className="scenario-card-title">
+          <h2>Load</h2>
+          <span
+            className="info-tip"
+            aria-label="Load a saved Baseline. Optionally load a previously saved Scenario to continue editing."
+          >
+            <Info size={14} />
+            <span className="info-popover">Load a saved Baseline. Optionally load a previously saved Scenario to continue editing.</span>
+          </span>
         </div>
-        {!saved.length ? <EmptyState compact title="No saved baselines" body="Save a baseline projection before building a scenario." /> : null}
-      </section>
-
-      <section className="card scenario-command-card">
-        <div className="scenario-save-controls">
+        <div className="scenario-control-row">
+          <label>
+            Baseline Projection
+            <select value={baselineId} onChange={(event) => loadBaseline(event.target.value)} disabled={busy}>
+              <option value="">Select a saved baseline</option>
+              {saved.map((item) => (
+                <option key={recordId(item)} value={recordId(item)}>
+                  {item.title} - {shortMonth(item.updated_at)}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="scenario-load-control">
             <label>
-              Load Scenario
-              <select value={selectedScenarioId} onChange={(event) => loadSavedScenario(event.target.value)} disabled={busy}>
+              Load Saved Scenario
+              <select value={selectedScenarioId} onChange={(event) => loadSavedScenario(event.target.value)} disabled={busy || !baselineReady}>
                 <option value="">Select a saved scenario</option>
-                {savedScenarios.map((item) => (
+                {visibleSavedScenarios.map((item) => (
                   <option key={recordId(item)} value={recordId(item)}>
-                    {item.title}
+                    {item.title} - {shortMonth(item.updated_at)}
                   </option>
                 ))}
               </select>
@@ -863,15 +928,40 @@ export default function ScenarioBuilder({ isActive = false }) {
               ) : null}
             </div>
           </div>
-          <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={busy || !baselineReady}>
-            <Save size={16} /> Save
-          </button>
-          {baselineReady ? (
-            <button type="button" className="outline-button scenario-save-button" onClick={clearBaseline} disabled={busy}>
+        </div>
+        {!saved.length ? <EmptyState compact title="No saved baselines" body="Save a baseline projection before building a scenario." /> : null}
+      </section>
+
+      <section className="card scenario-command-card">
+        <div className="scenario-card-title">
+          <h2>Scenario</h2>
+          <span
+            className="info-tip"
+            aria-label="Enter a Scenario Title before saving. Saving an existing title updates that Scenario. Saving a new title creates a new Scenario."
+          >
+            <Info size={14} />
+            <span className="info-popover">Enter a Scenario Title before saving. Saving an existing title updates that Scenario. Saving a new title creates a new Scenario.</span>
+          </span>
+        </div>
+        <div className="scenario-save-controls">
+          <label className="scenario-title-control">
+            Scenario Title
+            <input
+              placeholder="Title here"
+              value={scenarioTitle}
+              onChange={(event) => setScenarioTitle(event.target.value)}
+              disabled={busy || !baselineReady}
+            />
+          </label>
+          <div className="scenario-command-actions">
+            <button className="outline-button scenario-save-button" onClick={saveScenario} disabled={busy || !baselineReady || !scenarioTitle.trim()}>
+              <Save size={16} /> Save
+            </button>
+            <button type="button" className="outline-button scenario-save-button" onClick={startNewScenario} disabled={busy || !baselineReady}>
               <Plus size={16} /> New
             </button>
-          ) : null}
-          <button className="primary-button" disabled={!baselineReady || busy} onClick={generateScenario}>
+          </div>
+          <button className="primary-button scenario-generate-button" disabled={!scenarioReady || busy} onClick={generateScenario}>
             {busy ? 'Working...' : 'Generate Scenario'}
           </button>
         </div>
@@ -880,7 +970,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Income Deviations</h2>
-          <button className="outline-button" onClick={startAddIncomeOverride} disabled={busy || showIncomeForm} title={incomeOverrides.length >= MAX_INCOME_DEVIATIONS ? 'Maximum of 10 income deviations reached.' : undefined}>
+          <button className="outline-button" onClick={startAddIncomeOverride} disabled={busy || showIncomeForm || !scenarioReady} title={incomeOverrides.length >= MAX_INCOME_DEVIATIONS ? 'Maximum of 10 income deviations reached.' : undefined}>
             <Plus size={16} /> Income Deviation
           </button>
         </div>
@@ -987,7 +1077,7 @@ export default function ScenarioBuilder({ isActive = false }) {
       <section className="card scenario-panel">
         <div className="card-header">
           <h2>Debt Deviations</h2>
-          <button className="outline-button" onClick={startAddDebtOverride} disabled={busy || showDebtForm} title={debtOverrides.length >= MAX_DEBT_DEVIATIONS ? 'Maximum of 10 debt deviations reached.' : undefined}>
+          <button className="outline-button" onClick={startAddDebtOverride} disabled={busy || showDebtForm || !scenarioReady} title={debtOverrides.length >= MAX_DEBT_DEVIATIONS ? 'Maximum of 10 debt deviations reached.' : undefined}>
             <Plus size={16} /> Debt Deviation
           </button>
         </div>
@@ -1390,10 +1480,6 @@ function toIsoMonthStart(value) {
   return `${match[2]}-${String(monthIndex + 1).padStart(2, '0')}-01`;
 }
 
-function defaultScenarioTitle(baseline) {
-  return baseline?.title ? `${baseline.title} Scenario` : 'Scenario';
-}
-
 function isOneTimeIncome(form) {
   return form.frequency === 'one_time';
 }
@@ -1556,10 +1642,17 @@ function comparableRates(rates = []) {
 export const scenarioInstructions = {
   title: 'Instructions',
   sections: [
-    { heading: '1. Open Baseline', body: 'Choose a saved baseline projection. The original rows remain unchanged.' },
-    { heading: '2. Add Deviations', body: 'Add changed income, changed debt payments, new debts, or APR changes.' },
-    { heading: '3. Generate', body: 'Scenario values appear beside baseline values with + column names.' },
-    { heading: '4. Save', body: 'Save the scenario as a separate projection for dashboard comparison.' },
+    { heading: '1. Load Baseline', body: 'Choose a saved baseline projection. The original rows remain unchanged.' },
+    { heading: '2. Choose Scenario', body: 'Load a saved Scenario, or enter a Scenario Title and Save to create one.' },
+    { heading: '3. Add Deviations', body: 'Add income and debt deviations after a Scenario exists.' },
+    { heading: '4. Generate', body: 'Scenario values appear beside baseline values with + column names.' },
+    { heading: '5. Save Updates', body: 'Save updates the current Scenario. Saving with a different title creates a new Scenario.' },
   ],
-  tips: ['Purple-tinted columns are scenario values.', 'Use deviation start dates for mid-plan changes.', 'Scenarios do not overwrite baselines.'],
+  tips: [
+    'Purple columns represent Scenario values.',
+    'Scenario titles are user-defined.',
+    'Month/Year indicates the last successful save.',
+    'Existing Scenario titles overwrite.',
+    'New Scenario titles create new Scenarios.',
+  ],
 };

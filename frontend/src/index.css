@@ -1373,44 +1373,35 @@ textarea {
 
 .scenario-setup-card,
 .scenario-command-card {
-  min-height: 110px;
-  padding: 16px;
+  min-height: 96px;
+  padding: 14px 16px;
 }
 
 .scenario-setup-card {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   align-content: center;
 }
 
-.scenario-baseline-inline {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: end;
-  gap: 14px;
-}
-
-.scenario-baseline-title {
-  min-width: 132px;
+.scenario-card-title {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding-bottom: 8px;
 }
 
-.scenario-baseline-title h2 {
+.scenario-card-title h2 {
   margin: 0;
   font-size: 16px;
   white-space: nowrap;
 }
 
-.scenario-baseline-title svg {
+.scenario-card-title svg {
   color: var(--navy);
 }
 
 .scenario-control-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr);
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
   gap: 10px;
   align-items: end;
 }
@@ -1421,6 +1412,7 @@ textarea {
 
 .scenario-command-card {
   display: grid;
+  gap: 12px;
   align-content: center;
 }
 
@@ -1440,7 +1432,7 @@ textarea {
 
 .scenario-save-controls {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
   gap: 10px;
   align-items: end;
   align-self: end;
@@ -1458,6 +1450,14 @@ textarea {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 6px;
+}
+
+.scenario-title-control {
+  min-width: 0;
+}
+
+.scenario-generate-button {
+  justify-self: end;
 }
 
 .scenario-save-button {
@@ -2291,15 +2291,6 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .scenario-baseline-inline {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .scenario-baseline-title {
-    padding-bottom: 0;
-  }
-
   .baseline-date-controls {
     flex-wrap: wrap;
   }
@@ -2380,8 +2371,7 @@ textarea {
   .saved-loader,
   .dashboard-header-control,
   .baseline-save-controls,
-  .scenario-baseline-inline,
-  .scenario-control-row,
+    .scenario-control-row,
   .scenario-save-controls,
   .scenario-load-control,
   .scenario-header-actions,

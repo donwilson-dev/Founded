@@ -566,7 +566,7 @@ function SavedProjectionControl({
           <option value="">Select a saved projection</option>
           {saved.map((item) => (
             <option key={getRecordId(item)} value={getRecordId(item)}>
-              {item.title} - {labelize(item.projection_type)}
+              {item.title} - {shortMonth(item.updated_at)} - {labelize(item.projection_type)}
             </option>
           ))}
         </select>
