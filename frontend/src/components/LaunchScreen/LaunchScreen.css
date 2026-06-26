@@ -7,12 +7,19 @@
   padding: clamp(1.25rem, 4vw, 3rem);
   cursor: pointer;
   background:
-    linear-gradient(135deg, rgba(247, 251, 255, 0.72), rgba(229, 240, 255, 0.62)),
+    linear-gradient(
+      135deg,
+      rgba(247, 251, 255, 0.72),
+      rgba(229, 240, 255, 0.62)
+    ),
     rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(20px) saturate(0.78);
   -webkit-backdrop-filter: blur(20px) saturate(0.78);
   opacity: 1;
-  transition: opacity 520ms ease, backdrop-filter 520ms ease, -webkit-backdrop-filter 520ms ease;
+  transition:
+    opacity 520ms ease,
+    backdrop-filter 520ms ease,
+    -webkit-backdrop-filter 520ms ease;
 }
 
 .launch-screen:focus {
@@ -32,7 +39,9 @@
   max-width: 92vw;
   transform: translateY(0);
   opacity: 1;
-  transition: transform 540ms ease, opacity 520ms ease;
+  transition:
+    transform 540ms ease,
+    opacity 520ms ease;
 }
 
 .launch-screen__artwork-wrap {
@@ -42,16 +51,23 @@
   border-radius: clamp(18px, 2.6vw, 24px);
   box-shadow: 0 24px 70px rgba(15, 35, 70, 0.24);
   transform: translateY(0);
-  transition: transform 220ms ease, box-shadow 220ms ease;
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease;
 }
 
 .launch-screen__artwork-wrap::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: -35% auto -35% -55%;
   width: 36%;
   transform: skewX(-18deg);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.36), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.36),
+    transparent
+  );
   opacity: 0;
   pointer-events: none;
 }
@@ -81,7 +97,7 @@
   align-items: center;
   gap: 0.75rem;
   color: #08224c;
-  font-weight: 700;
+  font-weight: 630;
   text-align: center;
   text-shadow: 0 1px 14px rgba(255, 255, 255, 0.72);
   opacity: 1;
@@ -97,8 +113,8 @@
 }
 
 .launch-screen__chevron {
-  width: clamp(1.45rem, 2.3vw, 1.8rem);
-  height: clamp(1.45rem, 2.3vw, 1.8rem);
+  width: clamp(1.45rem, 2.3vw, 1.5rem);
+  height: clamp(1.45rem, 2.3vw, 1.5rem);
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
   transform: rotate(45deg);

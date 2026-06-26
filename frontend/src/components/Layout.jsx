@@ -13,7 +13,7 @@ export default function Layout({
   return (
     <div className="app-shell">
       <Sidebar activePage={activePage} onNavigate={onNavigate} />
-      <main className="main-area">
+      <main className={activePage === 'home' ? 'main-area home-main-area' : 'main-area'}>
         <header className="topbar">
           <div>
             <h1>{title}</h1>
