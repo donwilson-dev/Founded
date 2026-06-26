@@ -1,0 +1,194 @@
+.launch-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: clamp(1.25rem, 4vw, 3rem);
+  cursor: pointer;
+  background:
+    linear-gradient(135deg, rgba(247, 251, 255, 0.72), rgba(229, 240, 255, 0.62)),
+    rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(20px) saturate(0.78);
+  -webkit-backdrop-filter: blur(20px) saturate(0.78);
+  opacity: 1;
+  transition: opacity 520ms ease, backdrop-filter 520ms ease, -webkit-backdrop-filter 520ms ease;
+}
+
+.launch-screen:focus {
+  outline: none;
+}
+
+.launch-screen:focus-visible .launch-screen__artwork {
+  outline: 3px solid rgba(37, 99, 235, 0.52);
+  outline-offset: 6px;
+}
+
+.launch-screen__content {
+  display: grid;
+  justify-items: center;
+  gap: clamp(1.35rem, 2.6vw, 2.2rem);
+  width: min(82vw, 1180px);
+  max-width: 92vw;
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 540ms ease, opacity 520ms ease;
+}
+
+.launch-screen__artwork-wrap {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  border-radius: clamp(18px, 2.6vw, 24px);
+  box-shadow: 0 24px 70px rgba(15, 35, 70, 0.24);
+  transform: translateY(0);
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.launch-screen__artwork-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -35% auto -35% -55%;
+  width: 36%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.36), transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.launch-screen__artwork-wrap:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 30px 84px rgba(15, 35, 70, 0.3);
+}
+
+.launch-screen__artwork-wrap:hover::after {
+  animation: launch-screen-sweep 1100ms ease;
+}
+
+.launch-screen__artwork {
+  display: block;
+  width: 100%;
+  max-height: 76vh;
+  height: auto;
+  object-fit: contain;
+  border-radius: inherit;
+  user-select: none;
+}
+
+.launch-screen__prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: #08224c;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 1px 14px rgba(255, 255, 255, 0.72);
+  opacity: 1;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+
+.launch-screen__prompt p {
+  margin: 0;
+  font-size: clamp(1.45rem, 2.4vw, 1.9rem);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.launch-screen__chevron {
+  width: clamp(1.45rem, 2.3vw, 1.8rem);
+  height: clamp(1.45rem, 2.3vw, 1.8rem);
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.34));
+  animation: launch-screen-pulse 2400ms ease-in-out infinite;
+}
+
+.launch-screen.is-exiting {
+  opacity: 0;
+  backdrop-filter: blur(0) saturate(1);
+  -webkit-backdrop-filter: blur(0) saturate(1);
+  pointer-events: none;
+}
+
+.launch-screen.is-exiting .launch-screen__content {
+  transform: translateY(34px);
+  opacity: 0;
+}
+
+.launch-screen.is-exiting .launch-screen__prompt {
+  opacity: 0;
+}
+
+@keyframes launch-screen-pulse {
+  0%,
+  65%,
+  100% {
+    transform: translateY(0) rotate(45deg);
+    opacity: 0.65;
+  }
+
+  35% {
+    transform: translateY(5px) rotate(45deg);
+    opacity: 1;
+  }
+}
+
+@keyframes launch-screen-sweep {
+  0% {
+    left: -55%;
+    opacity: 0;
+  }
+
+  22% {
+    opacity: 1;
+  }
+
+  100% {
+    left: 120%;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .launch-screen {
+    padding: 1rem;
+  }
+
+  .launch-screen__content {
+    width: min(94vw, 520px);
+  }
+
+  .launch-screen__prompt {
+    gap: 0.55rem;
+  }
+
+  .launch-screen__prompt p {
+    font-size: 1.12rem;
+    white-space: normal;
+  }
+
+  .launch-screen__chevron {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-screen,
+  .launch-screen__content,
+  .launch-screen__artwork-wrap,
+  .launch-screen__prompt {
+    transition-duration: 1ms;
+  }
+
+  .launch-screen__chevron {
+    animation: none;
+  }
+
+  .launch-screen__artwork-wrap:hover::after {
+    animation: none;
+  }
+}

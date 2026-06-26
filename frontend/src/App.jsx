@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import Layout from './components/Layout.jsx';
+import LaunchScreen from './components/LaunchScreen/LaunchScreen.jsx';
 import { useSessionState } from './utils/persistence.js';
 
 const Home = lazy(() => import('./pages/Home.jsx'));
@@ -100,6 +101,7 @@ const pages = {
 
 export default function App() {
   const [activePage, setActivePage] = useSessionState('founded.activePage', 'home');
+  const [showLaunchScreen, setShowLaunchScreen] = useState(true);
   const safeActivePage = pages[activePage] ? activePage : 'home';
   const [loadedPageIds, setLoadedPageIds] = useState([safeActivePage]);
   const page = useMemo(() => pages[safeActivePage], [safeActivePage]);
@@ -112,26 +114,29 @@ export default function App() {
   }, [safeActivePage]);
 
   return (
-    <Layout
-      activePage={safeActivePage}
-      onNavigate={setActivePage}
-      title={page.title}
-      subtitle={page.subtitle}
-      instructions={page.instructions}
-    >
-      {Object.entries(pages).map(([id, config]) => {
-        const PageComponent = config.Component;
-        const shouldRender = renderedPageIds.has(id);
-        return (
-          <section className={safeActivePage === id ? 'workspace-page active' : 'workspace-page'} key={id}>
-            {shouldRender ? (
-              <Suspense fallback={safeActivePage === id ? <div className="empty-state">Loading...</div> : null}>
-                <PageComponent onNavigate={setActivePage} isActive={safeActivePage === id} />
-              </Suspense>
-            ) : null}
-          </section>
-        );
-      })}
-    </Layout>
+    <>
+      <Layout
+        activePage={safeActivePage}
+        onNavigate={setActivePage}
+        title={page.title}
+        subtitle={page.subtitle}
+        instructions={page.instructions}
+      >
+        {Object.entries(pages).map(([id, config]) => {
+          const PageComponent = config.Component;
+          const shouldRender = renderedPageIds.has(id);
+          return (
+            <section className={safeActivePage === id ? 'workspace-page active' : 'workspace-page'} key={id}>
+              {shouldRender ? (
+                <Suspense fallback={safeActivePage === id ? <div className="empty-state">Loading...</div> : null}>
+                  <PageComponent onNavigate={setActivePage} isActive={safeActivePage === id} />
+                </Suspense>
+              ) : null}
+            </section>
+          );
+        })}
+      </Layout>
+      {showLaunchScreen ? <LaunchScreen onComplete={() => setShowLaunchScreen(false)} /> : null}
+    </>
   );
 }
