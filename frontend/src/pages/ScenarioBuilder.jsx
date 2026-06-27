@@ -1640,19 +1640,15 @@ function comparableRates(rates = []) {
 }
 
 export const scenarioInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
-    { heading: '1. Load Baseline', body: 'Choose a saved baseline projection. The original rows remain unchanged.' },
-    { heading: '2. Choose Scenario', body: 'Load a saved Scenario, or enter a Scenario Title and Save to create one.' },
-    { heading: '3. Add Deviations', body: 'Add income and debt deviations after a Scenario exists.' },
-    { heading: '4. Generate', body: 'Scenario values appear beside baseline values with + column names.' },
-    { heading: '5. Save Updates', body: 'Save updates the current Scenario. Saving with a different title creates a new Scenario.' },
+    { heading: 'Purpose', body: 'Scenario Builder lets you test what could change without overwriting your original baseline.' },
+    { heading: 'Workflow', body: 'Open a saved baseline, add scenario changes, generate the scenario, then save it as a separate plan for comparison.' },
+    { heading: 'Need More Help', body: 'Use the Dashboard after saving a scenario to compare outcomes, milestones, cash flow, and payoff timing.' },
   ],
   tips: [
-    'Purple columns represent Scenario values.',
-    'Scenario titles are user-defined.',
-    'Month/Year indicates the last successful save.',
-    'Existing Scenario titles overwrite.',
-    'New Scenario titles create new Scenarios.',
+    'Create one scenario per major question so comparisons stay clear.',
+    'Use start dates when a change begins later in the plan.',
+    'Scenarios never overwrite the baseline they are based on.',
   ],
 };

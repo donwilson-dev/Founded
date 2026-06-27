@@ -2117,6 +2117,8 @@ textarea {
 
 .drawer-title-row h2 {
   margin: 0;
+  color: var(--navy);
+  font-size: 22px;
 }
 
 .drawer-scroll {
@@ -2126,7 +2128,7 @@ textarea {
 }
 
 .instruction-section {
-  padding: 18px 0;
+  padding: 16px 0;
   border-bottom: 1px solid #edf1f7;
 }
 
@@ -2134,22 +2136,32 @@ textarea {
 .tips-box h3 {
   margin: 0 0 8px;
   color: var(--blue);
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 900;
 }
 
 .instruction-section p,
 .tips-box li {
   color: var(--text);
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .tips-box {
-  margin-top: 18px;
-  padding: 16px;
+  margin-top: 16px;
+  padding: 15px 16px;
   background: #f7fbff;
   border: 1px solid #cfe0ff;
   border-radius: 8px;
+}
+
+.tips-box ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.tips-box li + li {
+  margin-top: 8px;
 }
 
 .home-workspace {

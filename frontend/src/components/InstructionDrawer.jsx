@@ -1,19 +1,22 @@
-import React from 'react';
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
-export default function InstructionDrawer({ title = 'Instructions', sections = [], tips = [] }) {
+export default function InstructionDrawer({ title = 'Page Guide', sections = [], tips = [], openSignal = 0 }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true);
+  }, [openSignal]);
 
   return (
     <aside className={`instruction-drawer ${open ? 'open' : ''}`}>
-      <button className="drawer-handle" onClick={() => setOpen((value) => !value)} aria-label="Toggle instructions">
+      <button className="drawer-handle" onClick={() => setOpen((value) => !value)} aria-label="Toggle page guide">
         {open ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
       </button>
       <div className="drawer-panel">
         <div className="drawer-title-row">
           <h2>{title}</h2>
-          <button className="icon-button" onClick={() => setOpen(false)} aria-label="Close instructions">
+          <button className="icon-button" onClick={() => setOpen(false)} aria-label="Close page guide">
             <X size={18} />
           </button>
         </div>

@@ -56,6 +56,7 @@ const navigationCards = [
     target: 'home',
     icon: guideIcon,
     tone: 'orange',
+    opensGuide: true,
   },
 ];
 
@@ -136,7 +137,7 @@ function formatActivityMonth(value) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date);
 }
 
-export default function Home({ onNavigate }) {
+export default function Home({ onNavigate, onOpenGuide }) {
   const [savedProjections, setSavedProjections] = useState([]);
 
   useEffect(() => {
@@ -264,7 +265,13 @@ export default function Home({ onNavigate }) {
             <button
               className={`home-nav-card ${card.tone}`}
               key={card.title}
-              onClick={() => onNavigate(card.target)}
+              onClick={() => {
+                if (card.opensGuide) {
+                  onOpenGuide?.();
+                  return;
+                }
+                onNavigate(card.target);
+              }}
               type="button"
             >
               <span className="home-nav-card-icon" aria-hidden="true">
@@ -304,24 +311,24 @@ export default function Home({ onNavigate }) {
 }
 
 export const homeInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
     {
-      heading: 'What Founded Does',
-      body: 'Founded turns income, debts, bills, APR schedules, and payments into monthly payoff and cash-flow projections.',
+      heading: 'Purpose',
+      body: 'Founded helps you build a clear financial plan from your income, bills, debts, balances, payments, and interest rates.',
     },
     {
-      heading: 'Saved Projections',
-      body: 'Saved projections keep calculated rows and the assumptions used to generate them.',
+      heading: 'Workflow',
+      body: 'Start in Baseline Builder to create your financial foundation, use Scenario Builder to test changes, then review saved plans in Dashboard.',
     },
     {
-      heading: 'Scenario "+" Columns',
-      body: 'Scenario columns show changed values beside the original baseline values for comparison.',
+      heading: 'Need More Help',
+      body: 'Every page in Founded includes a contextual Page Guide. Open it whenever you want help understanding the page you are using.',
     },
   ],
   tips: [
-    'Start with a baseline before creating scenarios.',
-    'Use short, descriptive projection titles.',
-    'Treat all projections as estimates.',
+    'Build and save a baseline before creating scenarios.',
+    'Use short, descriptive names for saved plans.',
+    'Review the Dashboard after saving projections to compare progress.',
   ],
 };

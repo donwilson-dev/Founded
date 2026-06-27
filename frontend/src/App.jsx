@@ -9,66 +9,76 @@ const ScenarioBuilder = lazy(() => import('./pages/ScenarioBuilder.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 
 const homeInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
     {
-      heading: 'What Founded Does',
-      body: 'Founded turns income, debts, bills, APR schedules, and payments into monthly payoff and cash-flow projections.',
+      heading: 'Purpose',
+      body: 'Founded helps you build a clear financial plan from your income, bills, debts, balances, payments, and interest rates.',
     },
     {
-      heading: 'Saved Projections',
-      body: 'Saved projections keep calculated rows and the assumptions used to generate them.',
+      heading: 'Workflow',
+      body: 'Start in Baseline Builder to create your financial foundation, use Scenario Builder to test changes, then review saved plans in Dashboard.',
     },
     {
-      heading: 'Scenario "+" Columns',
-      body: 'Scenario columns show changed values beside the original baseline values for comparison.',
+      heading: 'Need More Help',
+      body: 'Every page in Founded includes a contextual Page Guide. Open it whenever you want help understanding the page you are using.',
     },
   ],
   tips: [
-    'Start with a baseline before creating scenarios.',
-    'Use short, descriptive projection titles.',
-    'Treat all projections as estimates.',
+    'Build and save a baseline before creating scenarios.',
+    'Use short, descriptive names for saved plans.',
+    'Review the Dashboard after saving projections to compare progress.',
   ],
 };
 
 const baselineInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
-    { heading: '1. Add Income', body: 'Add all monthly income sources with start dates and optional end dates.' },
-    { heading: '2. Edit Or Delete', body: 'Use the row action icons to keep existing income and debt records current.' },
-    { heading: '3. Generate', body: 'Generate a baseline table using current backend income and debt records.' },
-    { heading: '4. Save', body: 'Save useful baselines so Scenario Builder and Dashboard can reopen them later.' },
+    { heading: 'Purpose', body: 'Baseline Builder creates the financial foundation for your plan. It captures the current picture before you test changes.' },
+    { heading: 'Workflow', body: 'Add financial data, review accounts, debts, bills, and income, generate the projection, then save the baseline for scenarios and dashboard review.' },
+    { heading: 'Need More Help', body: 'Return to Home to review the complete Founded workflow, or keep this Page Guide open while you build your baseline.' },
   ],
-  tips: ['No APR is treated as 0%.', 'Seeded records can be edited or removed.', 'Projection results are estimates.'],
+  tips: [
+    'Include all regular income, bills, and debt payments before generating.',
+    'Update balances and APRs when real numbers change.',
+    'Save your baseline once it represents the plan you want to compare against.',
+  ],
 };
 
 const scenarioInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
-    { heading: '1. Open Baseline', body: 'Choose a saved baseline projection. The original rows remain unchanged.' },
-    { heading: '2. Add Deviations', body: 'Add changed income, changed debt payments, new debts, or APR changes.' },
-    { heading: '3. Generate', body: 'Scenario values appear beside baseline values with + column names.' },
-    { heading: '4. Save', body: 'Save the scenario as a separate projection for dashboard comparison.' },
+    { heading: 'Purpose', body: 'Scenario Builder lets you test what could change without overwriting your original baseline.' },
+    { heading: 'Workflow', body: 'Open a saved baseline, add scenario changes, generate the scenario, then save it as a separate plan for comparison.' },
+    { heading: 'Need More Help', body: 'Use the Dashboard after saving a scenario to compare outcomes, milestones, cash flow, and payoff timing.' },
   ],
-  tips: ['Purple-tinted columns are scenario values.', 'Use deviation start dates for mid-plan changes.', 'Scenarios do not overwrite baselines.'],
+  tips: [
+    'Create one scenario per major question so comparisons stay clear.',
+    'Use start dates when a change begins later in the plan.',
+    'Scenarios never overwrite the baseline they are based on.',
+  ],
 };
 
 const dashboardInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
     {
-      heading: 'Saved Projection',
-      body: 'Choose any saved baseline or scenario projection to populate the analytics hub.',
+      heading: 'Purpose',
+      body: 'Dashboard turns saved baselines and scenarios into charts, milestones, tables, and exportable summaries.',
     },
     {
-      heading: 'Projection Overview',
-      body: 'Review month-by-month projection rows below the chart grid.',
+      heading: 'Workflow',
+      body: 'Select a saved projection, review the charts and milestones, inspect the projection table, compare scenario results when available, and export views when you need a record.',
+    },
+    {
+      heading: 'Need More Help',
+      body: 'Visit Home for the full planning workflow, or continue through saved projections to build confidence with your financial plan.',
     },
   ],
   tips: [
-    'Dashboard payoff dates can extend beyond the visible projection table.',
-    'Scenario projections include comparison chart lines when available.',
-    'Column controls are kept on tables for future saved view customization.',
+    'Start with the overview cards before reading individual charts.',
+    'Use milestones to understand when important payoff events occur.',
+    'Export reports after selecting the projection and view you want to share.',
   ],
 };
 
@@ -102,6 +112,7 @@ const pages = {
 export default function App() {
   const [activePage, setActivePage] = useSessionState('founded.activePage', 'home');
   const [showLaunchScreen, setShowLaunchScreen] = useState(true);
+  const [guideOpenSignal, setGuideOpenSignal] = useState(0);
   const safeActivePage = pages[activePage] ? activePage : 'home';
   const [loadedPageIds, setLoadedPageIds] = useState([safeActivePage]);
   const page = useMemo(() => pages[safeActivePage], [safeActivePage]);
@@ -121,6 +132,7 @@ export default function App() {
         title={page.title}
         subtitle={page.subtitle}
         instructions={page.instructions}
+        guideOpenSignal={guideOpenSignal}
       >
         {Object.entries(pages).map(([id, config]) => {
           const PageComponent = config.Component;
@@ -129,7 +141,11 @@ export default function App() {
             <section className={safeActivePage === id ? 'workspace-page active' : 'workspace-page'} key={id}>
               {shouldRender ? (
                 <Suspense fallback={safeActivePage === id ? <div className="empty-state">Loading...</div> : null}>
-                  <PageComponent onNavigate={setActivePage} isActive={safeActivePage === id} />
+                  <PageComponent
+                    onNavigate={setActivePage}
+                    onOpenGuide={() => setGuideOpenSignal((value) => value + 1)}
+                    isActive={safeActivePage === id}
+                  />
                 </Suspense>
               ) : null}
             </section>

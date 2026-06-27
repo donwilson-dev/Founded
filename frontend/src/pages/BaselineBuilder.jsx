@@ -1849,12 +1849,15 @@ function sortByDisplayOrder(items = []) {
 }
 
 export const baselineInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
-    { heading: '1. Add Income', body: 'Add all monthly income sources with start dates and optional end dates.' },
-    { heading: '2. Edit Or Delete', body: 'Use the row action icons to keep existing income and debt records current.' },
-    { heading: '3. Generate', body: 'Generate a baseline table using current backend income and debt records.' },
-    { heading: '4. Save', body: 'Save useful baselines so Scenario Builder and Dashboard can reopen them later.' },
+    { heading: 'Purpose', body: 'Baseline Builder creates the financial foundation for your plan. It captures the current picture before you test changes.' },
+    { heading: 'Workflow', body: 'Add financial data, review accounts, debts, bills, and income, generate the projection, then save the baseline for scenarios and dashboard review.' },
+    { heading: 'Need More Help', body: 'Return to Home to review the complete Founded workflow, or keep this Page Guide open while you build your baseline.' },
   ],
-  tips: ['No APR is treated as 0%.', 'Seeded records can be edited or removed.', 'Projection results are estimates.'],
+  tips: [
+    'Include all regular income, bills, and debt payments before generating.',
+    'Update balances and APRs when real numbers change.',
+    'Save your baseline once it represents the plan you want to compare against.',
+  ],
 };

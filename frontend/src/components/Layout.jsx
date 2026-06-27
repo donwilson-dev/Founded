@@ -8,6 +8,7 @@ export default function Layout({
   title,
   subtitle,
   instructions,
+  guideOpenSignal,
   children,
 }) {
   return (
@@ -23,7 +24,7 @@ export default function Layout({
         </header>
         <div className="page-content">{children}</div>
       </main>
-      <InstructionDrawer {...instructions} />
+      <InstructionDrawer {...instructions} openSignal={guideOpenSignal} />
     </div>
   );
 }

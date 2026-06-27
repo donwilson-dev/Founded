@@ -2894,20 +2894,24 @@ function milestoneRows(rows, hasScenario) {
 }
 
 export const dashboardInstructions = {
-  title: 'Instructions',
+  title: 'Page Guide',
   sections: [
     {
-      heading: 'Saved Projection',
-      body: 'Choose any saved baseline or scenario projection to populate the analytics hub.',
+      heading: 'Purpose',
+      body: 'Dashboard turns saved baselines and scenarios into charts, milestones, tables, and exportable summaries.',
     },
     {
-      heading: 'Projection Overview',
-      body: 'Review month-by-month projection rows below the chart grid.',
+      heading: 'Workflow',
+      body: 'Select a saved projection, review the charts and milestones, inspect the projection table, compare scenario results when available, and export views when you need a record.',
+    },
+    {
+      heading: 'Need More Help',
+      body: 'Visit Home for the full planning workflow, or continue through saved projections to build confidence with your financial plan.',
     },
   ],
   tips: [
-    'Dashboard payoff dates can extend beyond the visible projection table.',
-    'Scenario projections include comparison chart lines when available.',
-    'Column controls are kept on tables for future saved view customization.',
+    'Start with the overview cards before reading individual charts.',
+    'Use milestones to understand when important payoff events occur.',
+    'Export reports after selecting the projection and view you want to share.',
   ],
 };
