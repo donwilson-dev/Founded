@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Clock3 } from 'lucide-react';
 import { foundedApi } from '../api/foundedApi.js';
 import foundedLogo from '../assets/illustrations/founded-logo.png';
 import baselineIcon from '../assets/icons/features/baseline-builder.png';
 import scenarioIcon from '../assets/icons/features/scenario-builder.png';
 import dashboardIcon from '../assets/icons/features/dashboard.png';
 import guideIcon from '../assets/icons/features/guide.png';
-import savedProjectionIcon from '../assets/icons/features/saved-projections.png';
 import workflowNumber1 from '../assets/icons/workflow/numbers/1.png';
 import workflowNumber2 from '../assets/icons/workflow/numbers/2.png';
 import workflowNumber3 from '../assets/icons/workflow/numbers/3.png';
@@ -119,7 +119,7 @@ const heroCallouts = [
   },
   {
     title: 'Compare Scenarios',
-    body: 'Model what-if changes and see the impact.',
+    body: 'Model "what-if" changes and see the impact.',
     icon: heroCompareScenarios,
   },
   {
@@ -228,15 +228,6 @@ export default function Home({ onNavigate }) {
           </div>
         </div>
 
-        <button
-          className="home-action-button primary home-hero-action"
-          type="button"
-          onClick={() => onNavigate('baseline')}
-        >
-          Start Baseline
-          <span aria-hidden="true">&rarr;</span>
-        </button>
-
         <div className="home-hero-illustration" aria-hidden="true">
           <img src={foundedLogo} alt="" />
         </div>
@@ -267,41 +258,43 @@ export default function Home({ onNavigate }) {
         </div>
       </section>
 
-      <section className="home-nav-grid" aria-label="Founded workspace navigation">
-        {navigationCards.map((card) => (
-          <button
-            className={`home-nav-card ${card.tone}`}
-            key={card.title}
-            onClick={() => onNavigate(card.target)}
-            type="button"
-          >
-            <span className="home-nav-card-icon" aria-hidden="true">
-              <img src={card.icon} alt="" />
-            </span>
-            <span className="home-nav-card-content">
-              <span className="home-nav-card-title">{card.title}</span>
-              <span className="home-nav-card-body">{card.body}</span>
-            </span>
-            <span className="home-nav-card-action">
-              {card.action}
-              <span aria-hidden="true">&rarr;</span>
-            </span>
-          </button>
-        ))}
+      <section className="home-nav-section" aria-labelledby="home-nav-title">
+        <div className="home-nav-grid" aria-label="Founded workspace navigation">
+          {navigationCards.map((card) => (
+            <button
+              className={`home-nav-card ${card.tone}`}
+              key={card.title}
+              onClick={() => onNavigate(card.target)}
+              type="button"
+            >
+              <span className="home-nav-card-icon" aria-hidden="true">
+                <img src={card.icon} alt="" />
+              </span>
+              <span className="home-nav-card-content">
+                <span className="home-nav-card-title">{card.title}</span>
+                <span className="home-nav-card-body">{card.body}</span>
+              </span>
+              <span className="home-nav-card-action">
+                {card.action}
+                <span aria-hidden="true">&rarr;</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="home-workspace-summary" aria-labelledby="home-workspace-summary-title">
         <div className="home-summary-heading">
           <span className="home-summary-icon" aria-hidden="true">
-            <img src={savedProjectionIcon} alt="" />
+            <Clock3 size={20} strokeWidth={2.4} />
           </span>
-          <h3 id="home-workspace-summary-title">Your Workspace at a Glance</h3>
+          <h3 id="home-workspace-summary-title">Your Workspace at a Glance:</h3>
         </div>
         <div className="home-summary-grid">
           {workspaceSummaryCards.map((card) => (
             <article className="home-summary-card" key={card.label}>
-              <span className="home-summary-card-label">{card.label}</span>
               <strong>{card.value}</strong>
+              <span className="home-summary-card-label">{card.label}</span>
             </article>
           ))}
         </div>
