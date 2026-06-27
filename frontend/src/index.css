@@ -2154,15 +2154,19 @@ textarea {
 
 .home-workspace {
   display: grid;
-  gap: 22px;
+  gap: 20px;
 }
 
 .home-main-area .topbar {
   display: none;
 }
 
+.home-main-area {
+  padding-top: 0;
+}
+
 .home-main-area .page-content {
-  padding-top: 8px;
+  padding-top: 0;
 }
 
 .home-workspace-hero {
@@ -2330,9 +2334,9 @@ textarea {
 .home-workflow-section {
   padding: 28px clamp(26px, 3vw, 36px) 28px;
   background: rgba(255, 255, 255, 0.96);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(187, 205, 232, 0.72);
   border-radius: 8px;
-  box-shadow: 0 20px 54px rgba(17, 31, 66, 0.08);
+  box-shadow: 0 14px 36px rgba(17, 31, 66, 0.065);
 }
 
 .home-section-heading {
@@ -2554,14 +2558,10 @@ textarea {
   gap: 16px;
 }
 
-.home-nav-heading {
-  margin-bottom: 0;
-}
-
 .home-nav-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
+  gap: 18px;
 }
 
 .home-nav-card {
@@ -2574,10 +2574,10 @@ textarea {
   gap: 15px;
   color: var(--text);
   text-align: left;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(187, 205, 232, 0.72);
   border-radius: 8px;
-  box-shadow: 0 16px 42px rgba(17, 31, 66, 0.08);
+  box-shadow: 0 14px 36px rgba(17, 31, 66, 0.065);
   cursor: pointer;
   transition: border-color 180ms ease;
 }
