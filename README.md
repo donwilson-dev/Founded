@@ -1,23 +1,131 @@
 # Founded
 
-Founded is a financial planning app for income, debt, projections, scenarios, debt payoff forecasting, and dashboard-ready data.
+**Founded** is a full-stack personal financial planning platform designed to help individuals and households build a financial foundation, project future cash flow, evaluate debt payoff strategies, and compare financial scenarios through an intuitive, data-driven experience.
 
-The active runtime is:
+Built with **React**, **Node.js**, **Express**, and **MongoDB**, Founded combines long-term financial forecasting with interactive dashboards to help users better understand how today's decisions impact tomorrow's financial health.
 
-- Node.js/Express backend in `backend`
-- MongoDB Community Server database
-- React/Vite frontend in `frontend`
+---
 
-## Repository Structure
+## Home
+
+![Founded Home](docs/images/home.png)
+
+---
+
+## Baseline Builder
+
+Build your financial foundation by creating the household you'll project against.
+
+The Baseline Builder allows you to configure:
+
+- Accounts and account owners
+- Income sources
+- Debts and loans
+- Bills and recurring expenses
+- Transfers between accounts
+
+This baseline becomes the source of truth for every future projection and scenario.
+
+![Baseline Builder](docs/images/baseline-builder.png)
+
+---
+
+## Scenario Builder
+
+Explore "what-if" situations without affecting your original financial plan.
+
+Create and compare scenarios such as:
+
+- Debt payoff acceleration
+- Income increases
+- Expense changes
+- New recurring costs
+- Financial life events
+
+Scenarios inherit the baseline while allowing targeted deviations for comparison.
+
+![Scenario Builder](docs/images/scenario-builder.png)
+
+---
+
+## Dashboard
+
+Analyze projected financial performance through an interactive dashboard featuring:
+
+- Projection summaries
+- Cash balance trends
+- Debt payoff tracking
+- Monthly financial metrics
+- Milestone visualization
+- Scenario comparison
+
+Projection data can be exported to **CSV**, **Excel**, and **PDF** formats for further analysis or record keeping.
+
+![Dashboard](docs/images/dashboard.png)
+
+---
+
+# Key Features
+
+- Personal and household financial planning
+- Long-term cash flow projections
+- Baseline financial modeling
+- Scenario comparison engine
+- Debt payoff forecasting
+- Multi-account financial management
+- Interactive dashboard analytics
+- Projection exports (CSV, Excel, PDF)
+- MongoDB-backed persistence
+- Desktop and tablet optimized interface
+
+---
+
+# Technology Stack
+
+### Frontend
+
+- React
+- Vite
+- JavaScript
+
+### Backend
+
+- Node.js
+- Express
+
+### Database
+
+- MongoDB Community Server
+
+---
+
+# Repository Structure
 
 ```text
-backend/   Node.js/Express API, MongoDB models, services, scripts, and tests
-frontend/  React/Vite application, UI components, pages, assets, and API client
+backend/
+    Node.js / Express API
+    MongoDB models
+    Controllers
+    Services
+    Routes
+    Tests
+
+frontend/
+    React application
+    Pages
+    Components
+    API client
+    Assets
+
+docs/
+    README images
 ```
 
-Runtime source, README files, tests, scripts, package manifests, and `.env.example` files are intended repository assets. Local environment files, dependencies, build outputs, editor files, temporary files, and internal continuation or planning packets are excluded from source control.
+---
 
-## Setup
+# Getting Started
+
+## Install Dependencies
 
 ```powershell
 cd backend
@@ -27,70 +135,95 @@ cd ..\frontend
 npm install
 ```
 
-Ensure MongoDB Community Server is running locally. The backend reads `MONGODB_URI` from `backend/.env`; a standard local database URI is `mongodb://127.0.0.1:27017/founded`.
+---
 
-## Run Backend
+## Configure MongoDB
+
+Ensure **MongoDB Community Server** is installed and running locally.
+
+Create a `backend/.env` file using `backend/.env.example`.
+
+Typical local connection:
+
+```text
+MONGODB_URI=mongodb://127.0.0.1:27017/founded
+```
+
+---
+
+## Run the Backend
 
 ```powershell
 cd backend
 npm run dev
 ```
 
-The backend health endpoint is available at `http://127.0.0.1:4000/health`.
+Health endpoint:
 
-## Run Frontend
+```text
+http://127.0.0.1:4000/health
+```
+
+---
+
+## Run the Frontend
 
 ```powershell
 cd frontend
-npm run dev -- --port 5174
+npm run dev
 ```
 
-The React app talks to the Node backend at `http://127.0.0.1:4000` by default. Override with `VITE_API_BASE_URL` if needed.
+The frontend is served by Vite on **http://localhost:5173** by default. If port 5173 is already in use, Vite will automatically select the next available port and display the correct URL in the terminal.
 
-## Validation
+By default, the frontend communicates with the backend at:
+
+```text
+http://127.0.0.1:4000
+```
+
+To use a different backend, configure:
+
+```text
+VITE_API_BASE_URL
+```
+
+---
+
+# Validation
+
+Verify that the application builds successfully and backend tests pass before running or contributing.
+
+### Backend
 
 ```powershell
 cd backend
+
 npm test
 npm run dataset:verify
+```
 
-cd ..\frontend
+### Frontend
+
+```powershell
+cd frontend
+
 npm run build
 ```
 
-## Dataset Version 1.0
+---
 
-```powershell
-cd backend
-npm run dataset:verify
-```
+# Design Principles
 
-The MongoDB dataset uses the official portfolio-safe demonstration records:
+Founded is built around a few core principles:
 
-- Demo Household Baseline
-- Demo Debt Reduction Scenario
-- Demo Income Increase Scenario
-- Demo Emergency Expense Scenario
+- Maintain a single financial source of truth through the Baseline.
+- Enable safe financial experimentation using independent Scenarios.
+- Preserve data integrity across all projections.
+- Keep financial projections transparent and explainable.
+- Deliver a clean, intuitive user experience focused on long-term financial planning.
 
-The demo data is synthetic and is intended for screenshots, walkthroughs, and desktop testing. The first projection month is January 2026.
+---
 
-| Saved Projection | Monthly Surplus | Cash Balance | Total Debt Balance | Total Debt Payments | Bills | Principal | Interest |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Demo Household Baseline | $8,670.00 | $39,070.00 | $45,648.21 | $1,295.00 | $635.00 | $1,051.79 | $243.21 |
-| Demo Debt Reduction Scenario | $8,405.00 | $38,805.00 | $45,348.21 | $1,595.00 | $600.00 | $1,351.79 | $243.21 |
-| Demo Income Increase Scenario | $9,370.00 | $39,770.00 | $45,648.21 | $1,295.00 | $635.00 | $1,051.79 | $243.21 |
-| Demo Emergency Expense Scenario | $8,670.00 | $39,070.00 | $45,648.21 | $1,295.00 | $635.00 | $1,051.79 | $243.21 |
+## License
 
-## Account Integrity Framework
-
-Overall projections remain the source of truth. Owner-level and account-level views must reconcile back to the same overall income, bills, debt payments, interest, principal, and cash balance totals.
-
-Income sources, debts, income deviations, debt deviations, and account transfers require valid account relationships before they can be saved. Inactive accounts remain valid for existing historical records, saved baselines, saved scenarios, and dashboard loads, but they are not selectable for new assignments.
-
-Projection calculations are event-driven by source records. Income, debt, bill, and transfer events respect start dates, end dates, payment dates where applicable, recurring pattern, and one-time behavior; monthly projection rows aggregate those events rather than defining their timing.
-
-Account transfers are income-source records marked as transfers. They move cash between account owners for owner-level projection views, require different From and To accounts, and must not change Overall income, bills, debt payments, monthly surplus, or cash balance.
-
-## Continuation Assets
-
-Continuation packets, command notes, roadmap drafts, and similar planning files are internal workflow materials. Keep them in the ignored local `CONTINUATION/` workspace, not in the production repository.
+This project is provided for educational and portfolio purposes.
