@@ -167,7 +167,7 @@ export function ExportDropdown({ exportOptions = [], onExport }) {
 
   return (
     <DropdownControl
-      selectedLabel="Export as.."
+      selectedLabel="Export"
       open={exportOpen}
       onToggle={() => setExportOpen((value) => !value)}
       pickerRef={exportPickerRef}

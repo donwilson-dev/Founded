@@ -34,6 +34,12 @@ export function percent(value) {
 }
 
 export function labelize(value) {
+  const productionLabels = {
+    bi_weekly: 'Bi-weekly',
+    first_and_fifteenth: 'First and fifteenth',
+    one_time: 'One-time',
+  };
+  if (productionLabels[value]) return productionLabels[value];
   return String(value || '')
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());

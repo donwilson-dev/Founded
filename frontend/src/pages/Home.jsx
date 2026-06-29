@@ -295,7 +295,7 @@ export default function Home({ onNavigate, onOpenGuide }) {
           <span className="home-summary-icon" aria-hidden="true">
             <Clock3 size={20} strokeWidth={2.4} />
           </span>
-          <h3 id="home-workspace-summary-title">Your Workspace at a Glance:</h3>
+          <h3 id="home-workspace-summary-title">Your Workspace at a Glance</h3>
         </div>
         <div className="home-summary-grid">
           {workspaceSummaryCards.map((card) => (

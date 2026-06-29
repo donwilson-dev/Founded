@@ -57,9 +57,9 @@ const OTHER_DEBT_RECURRENCE_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'yearly', label: 'Yearly' },
   { value: 'weekly', label: 'Weekly' },
-  { value: 'bi_weekly', label: 'Bi-Weekly' },
-  { value: 'first_and_fifteenth', label: 'First and Fifteenth' },
-  { value: 'one_time', label: 'One Time' },
+  { value: 'bi_weekly', label: 'Bi-weekly' },
+  { value: 'first_and_fifteenth', label: 'First and fifteenth' },
+  { value: 'one_time', label: 'One-time' },
 ];
 
 const initialIncome = {
@@ -1136,7 +1136,12 @@ export default function BaselineBuilder({ isActive = false }) {
           </button>
           <label>
             Load Saved Baseline
-            <select value={selectedSavedProjectionId} onChange={(event) => event.target.value && openProjection(event.target.value)} disabled={busy}>
+            <select
+              aria-label="Load Saved Baseline"
+              value={selectedSavedProjectionId}
+              onChange={(event) => event.target.value && openProjection(event.target.value)}
+              disabled={busy}
+            >
               <option value="">Select a saved baseline</option>
               {savedProjections.map((item) => (
                 <option key={recordId(item)} value={recordId(item)}>{item.title} - {shortMonth(item.updated_at)}</option>
@@ -1316,11 +1321,11 @@ export default function BaselineBuilder({ isActive = false }) {
             ) : (
               <label>Recurring
                 <select value={incomeForm.frequency} onChange={(e) => setIncomeForm({ ...incomeForm, frequency: e.target.value, endDate: e.target.value === 'one_time' ? '' : incomeForm.endDate })}>
-                  <option value="one_time">One-Time</option>
+                  <option value="one_time">One-time</option>
                   <option value="monthly">Monthly</option>
                   <option value="weekly">Weekly</option>
                   <option value="bi_weekly">Bi-weekly</option>
-                  <option value="first_and_fifteenth">First and Fifteenth</option>
+                  <option value="first_and_fifteenth">First and fifteenth</option>
                 </select>
               </label>
             )}
@@ -1331,11 +1336,11 @@ export default function BaselineBuilder({ isActive = false }) {
             {incomeForm.isAccountTransfer ? (
               <label>Recurring
                 <select value={incomeForm.frequency} onChange={(e) => setIncomeForm({ ...incomeForm, frequency: e.target.value, endDate: e.target.value === 'one_time' ? '' : incomeForm.endDate })}>
-                  <option value="one_time">One-Time</option>
+                  <option value="one_time">One-time</option>
                   <option value="monthly">Monthly</option>
                   <option value="weekly">Weekly</option>
                   <option value="bi_weekly">Bi-weekly</option>
-                  <option value="first_and_fifteenth">First and Fifteenth</option>
+                  <option value="first_and_fifteenth">First and fifteenth</option>
                 </select>
               </label>
             ) : null}

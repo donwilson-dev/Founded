@@ -562,7 +562,11 @@ function SavedProjectionControl({
       </span>
       <label>
         Saved Projection
-        <select value={projectionId} onChange={(event) => onLoad(event.target.value)}>
+        <select
+          aria-label="Saved Projection"
+          value={projectionId}
+          onChange={(event) => onLoad(event.target.value)}
+        >
           <option value="">Select a saved projection</option>
           {saved.map((item) => (
             <option key={getRecordId(item)} value={getRecordId(item)}>

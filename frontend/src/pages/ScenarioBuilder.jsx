@@ -43,9 +43,9 @@ const OTHER_DEBT_RECURRENCE_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'yearly', label: 'Yearly' },
   { value: 'weekly', label: 'Weekly' },
-  { value: 'bi_weekly', label: 'Bi-Weekly' },
-  { value: 'first_and_fifteenth', label: 'First and Fifteenth' },
-  { value: 'one_time', label: 'One Time' },
+  { value: 'bi_weekly', label: 'Bi-weekly' },
+  { value: 'first_and_fifteenth', label: 'First and fifteenth' },
+  { value: 'one_time', label: 'One-time' },
 ];
 
 const incomeTemplate = {
@@ -876,7 +876,12 @@ export default function ScenarioBuilder({ isActive = false }) {
         <div className="scenario-control-row">
           <label>
             Baseline Projection
-            <select value={baselineId} onChange={(event) => loadBaseline(event.target.value)} disabled={busy}>
+            <select
+              aria-label="Baseline Projection"
+              value={baselineId}
+              onChange={(event) => loadBaseline(event.target.value)}
+              disabled={busy}
+            >
               <option value="">Select a saved baseline</option>
               {saved.map((item) => (
                 <option key={recordId(item)} value={recordId(item)}>
@@ -888,7 +893,12 @@ export default function ScenarioBuilder({ isActive = false }) {
           <div className="scenario-load-control">
             <label>
               Load Saved Scenario
-              <select value={selectedScenarioId} onChange={(event) => loadSavedScenario(event.target.value)} disabled={busy || !baselineReady}>
+              <select
+                aria-label="Load Saved Scenario"
+                value={selectedScenarioId}
+                onChange={(event) => loadSavedScenario(event.target.value)}
+                disabled={busy || !baselineReady}
+              >
                 <option value="">Select a saved scenario</option>
                 {visibleSavedScenarios.map((item) => (
                   <option key={recordId(item)} value={recordId(item)}>
@@ -1052,11 +1062,11 @@ export default function ScenarioBuilder({ isActive = false }) {
               ) : null}
               <label>Recurring
                 <select value={incomeForm.frequency} onChange={(e) => setIncomeForm({ ...incomeForm, frequency: e.target.value, endDate: e.target.value === 'one_time' ? '' : incomeForm.endDate })}>
-                  <option value="one_time">One-Time</option>
+                  <option value="one_time">One-time</option>
                   <option value="monthly">Monthly</option>
                   <option value="weekly">Weekly</option>
                   <option value="bi_weekly">Bi-weekly</option>
-                  <option value="first_and_fifteenth">First and Fifteenth</option>
+                  <option value="first_and_fifteenth">First and fifteenth</option>
                 </select>
               </label>
               <label className={incomeForm.isAccountTransfer ? 'wide-field income-notes-field' : 'wide-field income-notes-field'}>Notes<textarea placeholder="Optional notes" value={incomeForm.notes} onChange={(e) => setIncomeForm({ ...incomeForm, notes: e.target.value })} /></label>
