@@ -93,7 +93,7 @@ export const foundedApi = {
 
   generateScenario: (payload) =>
     post('/scenario/generate', {
-      baseline_projection_id: Number(payload.baselineProjectionId),
+      baseline_projection_id: payload.baselineProjectionId,
       scenario_start_month: payload.scenarioStartMonth || null,
       scenario_end_month: payload.scenarioEndMonth || null,
       months: payload.months ? Math.min(Number(payload.months), MAX_PROJECTION_MONTHS) : null,
@@ -104,7 +104,7 @@ export const foundedApi = {
 
   saveScenario: (payload) =>
     post('/scenario/save', {
-      baseline_projection_id: Number(payload.baselineProjectionId),
+      baseline_projection_id: payload.baselineProjectionId,
       scenario_start_month: payload.scenarioStartMonth || null,
       scenario_end_month: payload.scenarioEndMonth || null,
       months: payload.months ? Math.min(Number(payload.months), MAX_PROJECTION_MONTHS) : null,

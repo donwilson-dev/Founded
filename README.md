@@ -4,26 +4,26 @@ Founded is a financial planning app for income, debt, projections, scenarios, de
 
 The active runtime is:
 
-- Node.js/Express backend in `migration/node-backend`
+- Node.js/Express backend in `backend`
 - MongoDB Community Server database
 - React/Vite frontend in `frontend`
 
 ## Setup
 
 ```powershell
-cd migration\node-backend
+cd backend
 npm install
 
-cd ..\..\frontend
+cd ..\frontend
 npm install
 ```
 
-Ensure MongoDB Community Server is running locally. The backend reads `MONGODB_URI` from `migration/node-backend/.env`; the standard local database is `mongodb://127.0.0.1:27017/founded_migration`.
+Ensure MongoDB Community Server is running locally. The backend reads `MONGODB_URI` from `backend/.env`; a standard local database URI is `mongodb://127.0.0.1:27017/founded`.
 
 ## Run Backend
 
 ```powershell
-cd migration\node-backend
+cd backend
 npm run dev
 ```
 
@@ -41,18 +41,18 @@ The React app talks to the Node backend at `http://127.0.0.1:4000` by default. O
 ## Validation
 
 ```powershell
-cd migration\node-backend
+cd backend
 npm test
 npm run dataset:verify
 
-cd ..\..\frontend
+cd ..\frontend
 npm run build
 ```
 
 ## Dataset Version 1.0
 
 ```powershell
-cd migration\node-backend
+cd backend
 npm run dataset:verify
 ```
 

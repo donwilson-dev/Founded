@@ -16,7 +16,7 @@ MongoDB is the authoritative Founded data source. Baseline, scenario, dashboard,
 Install dependencies from this folder:
 
 ```powershell
-cd migration\node-backend
+cd backend
 npm install
 ```
 
@@ -43,7 +43,7 @@ Copy-Item .env.example .env
 Set the local MongoDB URI:
 
 ```text
-MONGODB_URI=mongodb://127.0.0.1:27017/founded_migration
+MONGODB_URI=mongodb://127.0.0.1:27017/founded
 ```
 
 The `.env` file is ignored by git and must stay local. Do not commit connection strings, credentials, or local environment files.
@@ -74,7 +74,7 @@ npm run dataset:verify
 ## Folder Structure
 
 ```text
-migration/node-backend/
+backend/
   .env.example
   README.md
   package.json
@@ -125,4 +125,3 @@ migration/node-backend/
 ## Current Limitations
 
 - No authentication.
-- Not yet production-packaged.

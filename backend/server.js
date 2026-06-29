@@ -8,8 +8,8 @@ async function startServer() {
   const app = createApp();
 
   app.listen(config.port, () => {
-    console.log(`Founded Node migration backend listening on port ${config.port}`);
-    console.log('Phase: phase-2-mongodb');
+    console.log(`Founded backend listening on port ${config.port}`);
+    console.log('Database: MongoDB');
   });
 }
 

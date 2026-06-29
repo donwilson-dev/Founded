@@ -1,12 +1,12 @@
 const SavedProjection = require('../models/SavedProjection');
 const Scenario = require('../models/Scenario');
+const { findByIdentifier, nextLegacyId } = require('./writeValidation');
 const { generateBaselineProjection } = require('./calculations/baselineProjection');
 const {
   baselineStartMonth,
   buildScenarioGenerationResponse,
   buildScenarioSavePayload,
 } = require('./calculations/scenarioProjection');
-const { nextLegacyId } = require('./writeValidation');
 
 function nowIso() {
   return new Date().toISOString();
@@ -19,20 +19,16 @@ function httpError(statusCode, message) {
 }
 
 async function findBaselineProjection(baselineProjectionId) {
-  const numericId = Number(baselineProjectionId);
-  if (!Number.isFinite(numericId)) {
+  if (baselineProjectionId === undefined || baselineProjectionId === null || baselineProjectionId === '') {
     throw httpError(404, 'Baseline projection not found');
   }
 
-  const baseline = await SavedProjection.findOne({
-    legacyId: numericId,
-    projection_type: 'baseline',
-  }).lean();
+  const baseline = await findByIdentifier(SavedProjection, baselineProjectionId, 'Baseline projection');
 
-  if (!baseline) {
+  if (!baseline || baseline.projection_type !== 'baseline') {
     throw httpError(404, 'Baseline projection not found');
   }
-  return baseline;
+  return baseline.toObject ? baseline.toObject() : baseline;
 }
 
 function currentMonthIso() {
