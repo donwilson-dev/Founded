@@ -226,4 +226,4 @@ Founded is built around a few core principles:
 
 ## License
 
-Copyright © 2026 Donald Wilson. All rights reserved. This repository is provided for educational and portfolio purposes. No license is granted for redistribution or commercial use.
+Copyright © 2026 donwilson-dev. All rights reserved. This repository is provided for educational and portfolio purposes. No license is granted for redistribution or commercial use.

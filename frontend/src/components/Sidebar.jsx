@@ -30,7 +30,7 @@ export default function Sidebar({ activePage, onNavigate }) {
           );
         })}
       </nav>
-      <div className="sidebar-footer">© 2026 donwilsondev</div>
+      <div className="sidebar-footer">© 2026 donwilson-dev</div>
     </aside>
   );
 }
