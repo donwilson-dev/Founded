@@ -93,4 +93,4 @@ Account transfers are income-source records marked as transfers. They move cash 
 
 ## Continuation Assets
 
-Continuation packets, CHAT+ notes, ROADMAP drafts, command packets, and similar planning files are internal workflow materials. Keep them outside the production repository or in ignored paths such as `CONTINUATION/` or `continuation/`.
+Continuation packets, command notes, roadmap drafts, and similar planning files are internal workflow materials. Keep them in the ignored local `CONTINUATION/` workspace, not in the production repository.

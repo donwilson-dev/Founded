@@ -47,10 +47,6 @@ temp/
 
 # Internal continuation and planning artifacts
 CONTINUATION/
-continuation/
-CHAT+*
-ROADMAP*
-*.cp
 
 # Editor and OS files
 .vscode/
