@@ -8,6 +8,15 @@ The active runtime is:
 - MongoDB Community Server database
 - React/Vite frontend in `frontend`
 
+## Repository Structure
+
+```text
+backend/   Node.js/Express API, MongoDB models, services, scripts, and tests
+frontend/  React/Vite application, UI components, pages, assets, and API client
+```
+
+Runtime source, README files, tests, scripts, package manifests, and `.env.example` files are intended repository assets. Local environment files, dependencies, build outputs, editor files, temporary files, and internal continuation or planning packets are excluded from source control.
+
 ## Setup
 
 ```powershell
@@ -81,3 +90,7 @@ Income sources, debts, income deviations, debt deviations, and account transfers
 Projection calculations are event-driven by source records. Income, debt, bill, and transfer events respect start dates, end dates, payment dates where applicable, recurring pattern, and one-time behavior; monthly projection rows aggregate those events rather than defining their timing.
 
 Account transfers are income-source records marked as transfers. They move cash between account owners for owner-level projection views, require different From and To accounts, and must not change Overall income, bills, debt payments, monthly surplus, or cash balance.
+
+## Continuation Assets
+
+Continuation packets, CHAT+ notes, ROADMAP drafts, command packets, and similar planning files are internal workflow materials. Keep them outside the production repository or in ignored paths such as `CONTINUATION/` or `continuation/`.

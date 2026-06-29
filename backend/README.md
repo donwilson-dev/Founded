@@ -1,4 +1,4 @@
-# Founded Node Backend
+# Founded Backend
 
 This folder contains the active Node.js / Express backend for Founded. It serves the React/Vite frontend and persists application data in MongoDB Community Server.
 
@@ -47,6 +47,8 @@ MONGODB_URI=mongodb://127.0.0.1:27017/founded
 ```
 
 The `.env` file is ignored by git and must stay local. Do not commit connection strings, credentials, or local environment files.
+
+Keep `.env.example` tracked so new environments can be configured without exposing local secrets.
 
 ## Health Check
 

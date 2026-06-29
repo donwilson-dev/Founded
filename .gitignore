@@ -45,6 +45,13 @@ temp/
 .codex/
 .agents/
 
+# Internal continuation and planning artifacts
+CONTINUATION/
+continuation/
+CHAT+*
+ROADMAP*
+*.cp
+
 # Editor and OS files
 .vscode/
 .idea/
