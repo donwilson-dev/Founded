@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 const { corsOptions } = require('./config/cors');
 const { requestLogger } = require('./middleware/requestLogger');
@@ -14,6 +15,25 @@ const scenarioActionRoutes = require('./routes/scenario');
 const scenarioRoutes = require('./routes/scenarios');
 const { errorHandler } = require('./middleware/errorHandler');
 const { notFound } = require('./middleware/notFound');
+
+const frontendDistPath = path.resolve(__dirname, '..', '..', 'frontend', 'dist');
+const apiRoutePrefixes = [
+  '/health',
+  '/account-balances',
+  '/dashboard',
+  '/debts',
+  '/income-sources',
+  '/interest-rates',
+  '/projections',
+  '/scenario',
+  '/scenarios',
+];
+
+function isApiRoutePath(requestPath) {
+  return apiRoutePrefixes.some((prefix) => (
+    requestPath === prefix || requestPath.startsWith(`${prefix}/`)
+  ));
+}
 
 function createApp() {
   const app = express();
@@ -31,6 +51,20 @@ function createApp() {
   app.use('/projections', projectionRoutes);
   app.use('/scenario', scenarioActionRoutes);
   app.use('/scenarios', scenarioRoutes);
+
+  if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(frontendDistPath));
+    app.get('*', (req, res, next) => {
+      if (isApiRoutePath(req.path) || !req.accepts('html')) {
+        next();
+        return;
+      }
+
+      res.sendFile(path.join(frontendDistPath, 'index.html'), (error) => {
+        if (error) next(error);
+      });
+    });
+  }
 
   app.use(notFound);
   app.use(errorHandler);
