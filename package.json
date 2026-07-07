@@ -1,0 +1,15 @@
+{
+  "name": "founded",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Root deployment scripts for the Founded single-app Hostinger deployment.",
+  "scripts": {
+    "install:backend": "npm --prefix backend install",
+    "install:frontend": "npm --prefix frontend install",
+    "postinstall": "npm run install:backend && npm run install:frontend",
+    "build": "npm --prefix frontend run build",
+    "prestart": "npm run build",
+    "start": "npm --prefix backend start",
+    "test": "npm --prefix backend test"
+  }
+}
