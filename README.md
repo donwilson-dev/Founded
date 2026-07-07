@@ -1,14 +1,18 @@
 # Founded
 
-**Founded** is a full-stack personal financial planning platform designed to help individuals and households build a financial foundation, project future cash flow, evaluate debt payoff strategies, and compare financial scenarios through an intuitive, data-driven experience.
+**Founded** is a full-stack personal financial planning platform that helps individuals and households build a financial foundation, forecast long-term cash flow, evaluate debt payoff strategies, and compare financial scenarios through an intuitive, data-driven experience.
 
-Built with **React**, **Node.js**, **Express**, and **MongoDB**, Founded combines long-term financial forecasting with interactive dashboards to help users better understand how today's decisions impact tomorrow's financial health.
+Built with **React**, **Node.js**, **Express**, and **MongoDB**, Founded combines long-term financial forecasting with interactive dashboards to help users better understand how today's financial decisions impact tomorrow's financial health.
 
 ---
 
 ## Home
 
 ![Founded Home](docs/images/home.png)
+
+Prefer to explore the application without installing it locally?
+
+**Website:** https://founded.donwilson-dev.com
 
 ---
 
@@ -24,7 +28,7 @@ The Baseline Builder allows you to configure:
 - Bills and recurring expenses
 - Transfers between accounts
 
-This baseline becomes the source of truth for every future projection and scenario.
+This baseline becomes the single source of truth for every future projection and scenario.
 
 ![Baseline Builder](docs/images/baseline-builder.png)
 
@@ -86,6 +90,7 @@ Projection data can be exported to **CSV**, **Excel**, and **PDF** formats for f
 
 - React
 - Vite
+- React Router
 - JavaScript
 
 ### Backend
@@ -97,28 +102,33 @@ Projection data can be exported to **CSV**, **Excel**, and **PDF** formats for f
 
 - MongoDB Community Server
 
+### Export Support
+
+- CSV
+- Excel (.xlsx)
+- PDF
+
 ---
 
 # Repository Structure
 
 ```text
 backend/
-    Node.js / Express API
-    MongoDB models
-    Controllers
-    Services
-    Routes
-    Tests
+├── controllers/
+├── models/
+├── routes/
+├── services/
+├── tests/
 
 frontend/
-    React application
-    Pages
-    Components
-    API client
-    Assets
+├── src/
+│   ├── api/
+│   ├── assets/
+│   ├── components/
+│   └── pages/
 
 docs/
-    README images
+└── images/
 ```
 
 ---
@@ -212,6 +222,16 @@ npm run build
 
 ---
 
+# Browser Support
+
+Founded is designed for modern versions of:
+
+- Google Chrome
+- Microsoft Edge
+- Mozilla Firefox
+
+---
+
 # Design Principles
 
 Founded is built around a few core principles:
@@ -226,4 +246,6 @@ Founded is built around a few core principles:
 
 ## License
 
-Copyright © 2026 donwilson-dev. All rights reserved. This repository is provided for educational and portfolio purposes. No license is granted for redistribution or commercial use.
+Copyright © 2026 donwilson-dev. All rights reserved.
+
+This repository is provided for educational and portfolio purposes. No license is granted for redistribution or commercial use.
