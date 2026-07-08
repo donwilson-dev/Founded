@@ -1,8 +1,10 @@
 const allowedOrigins = [
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-  'http://localhost:5173',
-  'http://localhost:5174',
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://founded.donwilson-dev.com",
+  "https://donwilson-dev.com",
 ];
 
 const corsOptions = {
@@ -11,7 +13,7 @@ const corsOptions = {
       callback(null, true);
       return;
     }
-    callback(new Error('Origin is not allowed by CORS'));
+    callback(new Error("Origin is not allowed by CORS"));
   },
 };
 
